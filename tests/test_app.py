@@ -24,7 +24,8 @@ def test_product_detail_has_viewer_with_ar():
     assert resp.status_code == 200
     assert "<model-viewer" in resp.text
     assert 'ar-modes="scene-viewer webxr"' in resp.text
-    assert "sample.glb" in resp.text
+    # generated model when one exists, hand-placed sample otherwise
+    assert 'src="/static/models/' in resp.text
 
 
 def test_unknown_product_returns_404():

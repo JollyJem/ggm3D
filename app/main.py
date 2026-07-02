@@ -52,6 +52,7 @@ def product_detail(request: Request, product_id: str):
             "product": product,
             "glb_url": glb_url or SAMPLE_GLB_URL,
             "is_sample": glb_url is None,
+            "has_model": glb_url is not None,
             "method": generator.method_for(product.category),
         },
     )
@@ -60,7 +61,8 @@ def product_detail(request: Request, product_id: str):
 def _run_generation(product: Product) -> None:
     """Spec (cached, Gemini, or fallback) -> mesh -> GLB -> storage."""
     try:
-        result = storage.load_cached_spec(product.id) or llm.get_build_spec(product)
+        cached = storage.load_cached_spec(product.id)
+        result = cached if cached and cached.spec else llm.get_build_spec(product)
         scene = generator.build_scene(result.spec)
         glb = scene.export(file_type="glb")
         storage.save_model(product.id, glb, result)
@@ -74,14 +76,23 @@ def generate(request: Request, product_id: str, background_tasks: BackgroundTask
     product = db.get_product(product_id)
     if product is None:
         return templates.TemplateResponse(request, "404.html", {}, status_code=404)
-    context = {"product": product}
     if generator.method_for(product.category) == "ai":
-        context["status"] = "unavailable"
-    else:
-        JOBS[product_id] = {"status": "running"}
-        background_tasks.add_task(_run_generation, product)
-        context["status"] = "running"
-    return templates.TemplateResponse(request, "partials/status.html", context)
+        # ai meshes are pregenerated; serve from cache or report pending
+        glb_url = storage.get_model_url(product_id)
+        if glb_url:
+            return templates.TemplateResponse(
+                request,
+                "partials/viewer.html",
+                {"product": product, "glb_url": glb_url, "is_sample": False},
+            )
+        return templates.TemplateResponse(
+            request, "partials/status.html", {"product": product, "status": "pending"}
+        )
+    JOBS[product_id] = {"status": "running"}
+    background_tasks.add_task(_run_generation, product)
+    return templates.TemplateResponse(
+        request, "partials/status.html", {"product": product, "status": "running"}
+    )
 
 
 @app.get("/products/{product_id}/model-status", response_class=HTMLResponse)
@@ -90,19 +101,21 @@ def model_status(request: Request, product_id: str):
     if product is None:
         return templates.TemplateResponse(request, "404.html", {}, status_code=404)
     job = JOBS.get(product_id, {})
-    if job.get("status") == "ready":
+    if job.get("status") == "failed":
+        return templates.TemplateResponse(
+            request,
+            "partials/status.html",
+            {"product": product, "status": "failed", "error": job.get("error", "")},
+        )
+    glb_url = None if job.get("status") == "running" else storage.get_model_url(product_id)
+    if glb_url:
         return templates.TemplateResponse(
             request,
             "partials/viewer.html",
-            {
-                "product": product,
-                "glb_url": storage.get_model_url(product_id) or SAMPLE_GLB_URL,
-                "is_sample": False,
-            },
+            {"product": product, "glb_url": glb_url, "is_sample": False},
         )
-    status = "failed" if job.get("status") == "failed" else "running"
     return templates.TemplateResponse(
         request,
         "partials/status.html",
-        {"product": product, "status": status, "error": job.get("error", "")},
+        {"product": product, "status": "running"},
     )

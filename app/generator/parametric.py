@@ -16,7 +16,7 @@ FEET_H = 100.0
 BASIN_DEPTH = 250.0
 
 
-def _to_scene(
+def to_scene(
     steel: list[trimesh.Trimesh], plastic: list[trimesh.Trimesh] | None = None
 ) -> trimesh.Scene:
     """Merge parts per material, rotate Z-up mm -> Y-up meters."""
@@ -40,7 +40,7 @@ def build_work_table(spec: BuildSpec) -> trimesh.Scene:
     steel += parts.legs(w, d, height=h - SLAB_T)
     if spec.features.get("undershelf", True):
         steel.append(parts.undershelf(w, d))
-    return _to_scene(steel)
+    return to_scene(steel)
 
 
 def build_fridge(spec: BuildSpec) -> trimesh.Scene:
@@ -66,7 +66,7 @@ def build_fridge(spec: BuildSpec) -> trimesh.Scene:
             FEET_H + 20 + door_h / 2,
         )
         plastic.append(parts.handle(handle_len, handle_center, depth=HANDLE_D))
-    return _to_scene(steel, plastic)
+    return to_scene(steel, plastic)
 
 
 def build_sink(spec: BuildSpec) -> trimesh.Scene:
@@ -86,4 +86,4 @@ def build_sink(spec: BuildSpec) -> trimesh.Scene:
     steel += parts.legs(w, d, height=h - SLAB_T)
     if spec.features.get("undershelf", False):
         steel.append(parts.undershelf(w, d))
-    return _to_scene(steel)
+    return to_scene(steel)

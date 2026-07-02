@@ -34,5 +34,6 @@ class BuildSpec(BaseModel):
 
 
 class SpecResult(BaseModel):
-    spec: BuildSpec
-    source: Literal["gemini", "fallback"]
+    # spec is None for ai meshes (placeholder or TripoSR), which have no BuildSpec
+    spec: BuildSpec | None = None
+    source: Literal["gemini", "fallback", "placeholder", "triposr"]

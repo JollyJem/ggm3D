@@ -18,9 +18,11 @@
     Retry
   </button>
 </div>
-{% elif status == "unavailable" %}
-<div class="flex items-center justify-center bg-gray-100 rounded-xl text-gray-600 p-6 text-center"
+{% elif status == "pending" %}
+<div class="flex flex-col items-center justify-center gap-2 bg-gray-100 rounded-xl text-gray-600 p-6 text-center"
      style="height: 45vh; min-height: 320px;">
-  <p>This product uses a pregenerated AI mesh &mdash; coming in Phase 3.</p>
+  <p class="font-semibold">Model pending</p>
+  <p class="text-sm">The AI mesh for this product has not been generated yet.</p>
+  <p class="text-xs text-gray-400">Run scripts/pregenerate_ai_meshes.py to create it.</p>
 </div>
 {% endif %}

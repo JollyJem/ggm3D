@@ -9,23 +9,25 @@
 </p>
 
 <div id="model-area" class="mt-4">
-  {% include "partials/viewer.html" %}
+  {% if method == "ai" and not has_model %}
+    {% set status = "pending" %}
+    {% include "partials/status.html" %}
+  {% else %}
+    {% include "partials/viewer.html" %}
+  {% endif %}
 </div>
 
 <p class="mt-4 text-gray-700">{{ product.description }}</p>
 
+{% if method == "parametric" %}
 <div class="mt-6">
-  {% if method == "parametric" %}
   <button hx-post="/products/{{ product.id }}/generate"
           hx-target="#model-area" hx-swap="innerHTML"
           class="w-full sm:w-auto bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg px-6 py-3 min-h-[44px] shadow">
     Generate 3D model
   </button>
-  {% else %}
-  <button disabled
-          class="w-full sm:w-auto bg-gray-300 text-gray-500 font-semibold rounded-lg px-6 py-3 min-h-[44px] cursor-not-allowed">
-    AI mesh — coming in Phase 3
-  </button>
-  {% endif %}
 </div>
+{% elif has_model %}
+<p class="mt-6 text-sm text-gray-400">Pregenerated AI mesh at real product dimensions.</p>
+{% endif %}
 {% endblock %}

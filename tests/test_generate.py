@@ -50,10 +50,40 @@ def test_generate_reuses_cached_spec(monkeypatch):
     assert "<model-viewer" in status.text
 
 
-def test_generate_ai_category_is_unavailable():
+def _install_ai_placeholder() -> None:
+    from app.generator.placeholder import build_placeholder
+    from app.schemas import Product, SpecResult
+
+    product = Product(**SEED_PRODUCTS[3])
+    glb = build_placeholder(product).export(file_type="glb")
+    storage.save_model(product.id, glb, SpecResult(source="placeholder"))
+
+
+def test_generate_ai_product_served_from_cache():
+    _install_ai_placeholder()
     resp = client.post(f"/products/{AI_ID}/generate")
     assert resp.status_code == 200
-    assert "Phase 3" in resp.text
+    assert "<model-viewer" in resp.text
+    assert f"{AI_ID}.glb" in resp.text
+    spec = storage.load_cached_spec(AI_ID)
+    assert spec is not None
+    assert spec.source == "placeholder"
+
+
+def test_ai_detail_page_shows_cached_model():
+    _install_ai_placeholder()
+    page = client.get(f"/products/{AI_ID}")
+    assert f"{AI_ID}.glb" in page.text
+    assert "Model pending" not in page.text
+
+
+def test_ai_product_pending_without_cache():
+    resp = client.post(f"/products/{AI_ID}/generate")
+    assert resp.status_code == 200
+    assert "Model pending" in resp.text
+    page = client.get(f"/products/{AI_ID}")
+    assert "Model pending" in page.text
+    assert "Generate 3D model" not in page.text
     assert not (storage.MODELS_DIR / f"{AI_ID}.glb").exists()
 
 
