@@ -1,0 +1,18 @@
+<model-viewer
+  src="{{ glb_url }}"
+  alt="3D model of {{ product.name }}"
+  ar
+  ar-modes="scene-viewer webxr"
+  ar-scale="fixed"
+  camera-controls
+  auto-rotate
+  poster="{{ product.image_url }}"
+  shadow-intensity="1">
+  <button slot="ar-button"
+          class="absolute bottom-3 right-3 bg-orange-500 text-white font-semibold rounded-full px-5 py-3 min-h-[44px] shadow">
+    View in your room
+  </button>
+</model-viewer>
+{% if is_sample %}
+<p class="text-sm text-gray-400 mt-2">Sample model — tap Generate to build this product at its real dimensions.</p>
+{% endif %}

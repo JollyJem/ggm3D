@@ -30,4 +30,9 @@ class BuildSpec(BaseModel):
     width_mm: int
     depth_mm: int
     height_mm: int
-    features: dict = {}
+    features: dict = {}  # example: {"undershelf": True, "doors": 1, "basins": 1}
+
+
+class SpecResult(BaseModel):
+    spec: BuildSpec
+    source: Literal["gemini", "fallback"]

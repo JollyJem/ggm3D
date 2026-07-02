@@ -4,3 +4,6 @@ __pycache__/
 .env
 .pytest_cache/
 .ruff_cache/
+# generated at runtime; only the hand-placed sample is committed
+app/static/models/*
+!app/static/models/sample.glb

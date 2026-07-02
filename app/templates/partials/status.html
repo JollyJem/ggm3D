@@ -1,0 +1,26 @@
+{% if status == "running" %}
+<div hx-get="/products/{{ product.id }}/model-status"
+     hx-trigger="every 2s"
+     hx-swap="outerHTML"
+     class="flex flex-col items-center justify-center gap-3 bg-gray-100 rounded-xl text-gray-600"
+     style="height: 45vh; min-height: 320px;">
+  <div class="animate-spin h-8 w-8 border-4 border-gray-400 border-t-transparent rounded-full"></div>
+  <p>Generating 3D model&hellip;</p>
+</div>
+{% elif status == "failed" %}
+<div class="flex flex-col items-center justify-center gap-3 bg-red-50 rounded-xl text-red-700 p-4 text-center"
+     style="height: 45vh; min-height: 320px;">
+  <p class="font-semibold">Generation failed</p>
+  <p class="text-sm">{{ error }}</p>
+  <button hx-post="/products/{{ product.id }}/generate"
+          hx-target="#model-area" hx-swap="innerHTML"
+          class="bg-orange-500 text-white font-semibold rounded-lg px-6 py-3 min-h-[44px]">
+    Retry
+  </button>
+</div>
+{% elif status == "unavailable" %}
+<div class="flex items-center justify-center bg-gray-100 rounded-xl text-gray-600 p-6 text-center"
+     style="height: 45vh; min-height: 320px;">
+  <p>This product uses a pregenerated AI mesh &mdash; coming in Phase 3.</p>
+</div>
+{% endif %}

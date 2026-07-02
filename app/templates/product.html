@@ -8,31 +8,24 @@
   {{ product.width_mm }} × {{ product.depth_mm }} × {{ product.height_mm }} mm
 </p>
 
-<div class="mt-4">
-  <model-viewer
-    src="{{ glb_url }}"
-    alt="3D model of {{ product.name }}"
-    ar
-    ar-modes="scene-viewer webxr"
-    ar-scale="fixed"
-    camera-controls
-    auto-rotate
-    poster="{{ product.image_url }}"
-    shadow-intensity="1">
-    <button slot="ar-button"
-            class="absolute bottom-3 right-3 bg-orange-500 text-white font-semibold rounded-full px-5 py-3 min-h-[44px] shadow">
-      View in your room
-    </button>
-  </model-viewer>
+<div id="model-area" class="mt-4">
+  {% include "partials/viewer.html" %}
 </div>
 
 <p class="mt-4 text-gray-700">{{ product.description }}</p>
 
 <div class="mt-6">
-  <!-- Phase 2 wires this to POST /products/{id}/generate -->
+  {% if method == "parametric" %}
+  <button hx-post="/products/{{ product.id }}/generate"
+          hx-target="#model-area" hx-swap="innerHTML"
+          class="w-full sm:w-auto bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg px-6 py-3 min-h-[44px] shadow">
+    Generate 3D model
+  </button>
+  {% else %}
   <button disabled
           class="w-full sm:w-auto bg-gray-300 text-gray-500 font-semibold rounded-lg px-6 py-3 min-h-[44px] cursor-not-allowed">
-    Generate 3D model (coming soon)
+    AI mesh — coming in Phase 3
   </button>
+  {% endif %}
 </div>
 {% endblock %}
