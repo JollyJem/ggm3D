@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+jinja2
+python-multipart
+trimesh
+manifold3d
+numpy
+google-genai
+supabase
+httpx
+pydantic
+pytest
+ruff

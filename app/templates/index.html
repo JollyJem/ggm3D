@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Catalog — GGM 3D Configurator{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-bold mb-4">Products</h1>
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+  {% for p in products %}
+  <a href="/products/{{ p.id }}"
+     class="block bg-white rounded-xl shadow-sm hover:shadow-md transition p-4 min-h-[44px]">
+    <div class="aspect-[4/3] bg-gray-100 rounded-lg mb-3 overflow-hidden flex items-center justify-center">
+      <img src="{{ p.image_url }}" alt="{{ p.name }}"
+           class="object-contain w-full h-full"
+           onerror="this.style.display='none'; this.parentElement.textContent='📦';">
+    </div>
+    <h2 class="font-semibold">{{ p.name }}</h2>
+    <p class="text-sm text-gray-500 mt-1">
+      {{ p.width_mm }} × {{ p.depth_mm }} × {{ p.height_mm }} mm
+    </p>
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}
