@@ -5,10 +5,23 @@ dev server and the demo keep working without a database connection.
 """
 
 from functools import lru_cache
+from typing import Literal
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.schemas import Product
 from app.seed_data import SEED_PRODUCTS
+
+Mode = Literal["local", "supabase"]
+
+
+def resolve_mode(settings: Settings | None = None) -> Mode:
+    """supabase when SUPABASE_URL and SUPABASE_SERVICE_KEY are set, else local."""
+    if settings is None:
+        settings = get_settings()
+    return "supabase" if settings.supabase_configured else "local"
+
+
+MODE: Mode = resolve_mode()
 
 
 @lru_cache

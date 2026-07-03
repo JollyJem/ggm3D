@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "PowerShell(Get-ChildItem -Force | Select-Object Name, Length; python --version)"
+      "PowerShell(Get-ChildItem -Force | Select-Object Name, Length; python --version)",
+      "Bash(pip show *)"
     ]
   }
 }

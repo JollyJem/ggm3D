@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Login — GGM 3D Configurator{% endblock %}
+{% block content %}
+<div class="max-w-sm mx-auto mt-8">
+  <h1 class="text-2xl font-bold">Login</h1>
+  <p class="text-gray-500 mt-1 text-sm">Sign in to generate 3D models.</p>
+  {% if error %}
+  <p class="mt-4 rounded-lg bg-red-50 text-red-700 px-4 py-3 text-sm">{{ error }}</p>
+  {% endif %}
+  <form method="post" action="/login" class="mt-6 space-y-4">
+    <input type="email" name="email" required autocomplete="email" placeholder="Email"
+           class="w-full rounded-lg border border-gray-300 px-4 py-3 min-h-[44px] text-base">
+    <input type="password" name="password" required autocomplete="current-password" placeholder="Password"
+           class="w-full rounded-lg border border-gray-300 px-4 py-3 min-h-[44px] text-base">
+    <button type="submit"
+            class="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-lg px-6 py-3 min-h-[44px] shadow">
+      Sign in
+    </button>
+  </form>
+  <a href="/" class="inline-flex items-center min-h-[44px] mt-4 text-sm text-gray-500 hover:text-gray-900">&larr; Back to catalog</a>
+</div>
+{% endblock %}

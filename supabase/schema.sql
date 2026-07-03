@@ -28,6 +28,10 @@ create table if not exists public.models (
   updated_at timestamptz not null default now()
 );
 
+-- one model per product; upsert target for storage.save_model
+create unique index if not exists models_product_id_key
+  on public.models (product_id);
+
 -- RLS: public read, writes only through the service key on the server
 -- (the service key bypasses RLS, so no write policies are defined).
 alter table public.products enable row level security;
