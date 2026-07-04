@@ -1,4 +1,4 @@
-"""The 6 demo products. Single source of truth for the seed script and
+"""The 7 demo products. Single source of truth for the seed script and
 the local fallback used when Supabase is not configured.
 
 Dimensions from public GGM Gastro catalog pages. Internal demo use only.
@@ -9,16 +9,16 @@ from pathlib import Path
 _IMG_DIR = Path(__file__).resolve().parent / "static" / "img"
 
 
-def _image_url(category: str) -> str:
-    """Real product photo ({category}.jpg) when present, sketch SVG until then.
+def _image_url(slug: str) -> str:
+    """Real product photo ({slug}.jpg) when present, sketch SVG until then.
 
     The same {category}.jpg is what pregenerate_ai_meshes.py feeds to TripoSR,
     so dropping the 6 photos into static/img needs no code changes. In
     supabase mode rerun scripts/seed_products.py so the DB rows pick them up.
     """
-    if (_IMG_DIR / f"{category}.jpg").is_file():
-        return f"/static/img/{category}.jpg"
-    return f"/static/img/{category}.svg"
+    if (_IMG_DIR / f"{slug}.jpg").is_file():
+        return f"/static/img/{slug}.jpg"
+    return f"/static/img/{slug}.svg"
 
 
 SEED_PRODUCTS: list[dict] = [
@@ -81,5 +81,15 @@ SEED_PRODUCTS: list[dict] = [
         "height_mm": 250,
         "image_url": _image_url("grill"),
         "description": "Electric contact grill with grooved cast iron plates.",
+    },
+    {
+        "id": "0b6f9c1a-1111-4a01-8a01-000000000007",
+        "name": "Commercial Dishwasher Sink Unit PREMIUM",
+        "category": "sink",
+        "width_mm": 2000,
+        "depth_mm": 700,
+        "height_mm": 850,
+        "image_url": _image_url("sink_double"),
+        "description": "Double sink with right hand drainer and rear backsplash, stainless steel.",
     },
 ]

@@ -14,6 +14,8 @@ DOOR_T = 25.0
 HANDLE_D = 35.0
 FEET_H = 100.0
 BASIN_DEPTH = 250.0
+BACKSPLASH_H = 100.0
+DRAINER_T = 20.0
 
 
 def to_scene(
@@ -69,21 +71,45 @@ def build_fridge(spec: BuildSpec) -> trimesh.Scene:
     return to_scene(steel, plastic)
 
 
-def build_sink(spec: BuildSpec) -> trimesh.Scene:
-    w, d, h = float(spec.width_mm), float(spec.depth_mm), float(spec.height_mm)
-    basins = max(1, int(spec.features.get("basins", 1)))
+def _basin_layout(w: float, basins: int, drainer: str, drainer_w: float):
+    """Basin width and center x positions; basins share the non-drainer zone."""
+    if drainer in ("left", "right"):
+        zone_w = w - drainer_w
+        zone_x0 = -w / 2 if drainer == "right" else -w / 2 + drainer_w
+        bw = min(500.0, zone_w / basins - 150)
+        centers = [zone_x0 + (i + 0.5) * zone_w / basins for i in range(basins)]
+        return bw, centers
     bw = min(500.0, w / basins - 150)
-    bd = d - 250
     centers = [-w / 4] if basins == 1 else [
         -w / 2 + (i + 0.5) * w / basins for i in range(basins)
     ]
-    slab = parts.top_slab(w, d, top_z=h, thickness=SLAB_T)
+    return bw, centers
+
+
+def build_sink(spec: BuildSpec) -> trimesh.Scene:
+    w, d, h = float(spec.width_mm), float(spec.depth_mm), float(spec.height_mm)
+    basins = max(1, int(spec.features.get("basins", 1)))
+    drainer = spec.features.get("drainer", "none")
+    has_splash = bool(spec.features.get("backsplash", False))
+    # raised parts stay under h so the bounding box matches the spec height
+    rise = BACKSPLASH_H if has_splash else DRAINER_T if drainer in ("left", "right") else 0.0
+    top = h - rise
+    drainer_w = min(700.0, w * 0.35)
+    bw, centers = _basin_layout(w, basins, drainer, drainer_w)
+    bd = d - 250
+    slab = parts.top_slab(w, d, top_z=top, thickness=SLAB_T)
     for cx in centers:
-        hole = parts.box_part(bw, bd, SLAB_T * 3, (cx, 0, h - SLAB_T / 2))
+        hole = parts.box_part(bw, bd, SLAB_T * 3, (cx, 0, top - SLAB_T / 2))
         slab = slab.difference(hole)
     steel = [slab]
-    steel += [parts.basin(bw, bd, BASIN_DEPTH, top_z=h, center_x=cx) for cx in centers]
-    steel += parts.legs(w, d, height=h - SLAB_T)
+    steel += [parts.basin(bw, bd, BASIN_DEPTH, top_z=top, center_x=cx) for cx in centers]
+    steel += parts.legs(w, d, height=top - SLAB_T)
+    if drainer in ("left", "right"):
+        sign = 1.0 if drainer == "right" else -1.0
+        dx = sign * (w - drainer_w) / 2
+        steel.append(parts.drainer_board(drainer_w - 60, bd, top, center_x=dx, thickness=DRAINER_T))
+    if has_splash:
+        steel.append(parts.backsplash(w, BACKSPLASH_H, top, back_y=-d / 2))
     if spec.features.get("undershelf", False):
         steel.append(parts.undershelf(w, d))
     return to_scene(steel)

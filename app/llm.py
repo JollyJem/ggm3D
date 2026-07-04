@@ -40,6 +40,8 @@ RESPONSE_SCHEMA: dict = {
                 "undershelf": {"type": "boolean"},
                 "doors": {"type": "integer"},
                 "basins": {"type": "integer"},
+                "drainer": {"type": "string", "enum": ["left", "right", "none"]},
+                "backsplash": {"type": "boolean"},
             },
         },
     },
@@ -47,13 +49,29 @@ RESPONSE_SCHEMA: dict = {
 }
 
 
+def _sink_features(product: Product) -> dict:
+    """Parse sink features from the product wording, mirroring the Gemini rules."""
+    text = f"{product.name} {product.description}".lower()
+    features: dict = {"basins": 2 if "double" in text else 1}
+    drainer = "right" if "right" in text else "left" if "left" in text else "none"
+    if drainer != "none":
+        features["drainer"] = drainer
+    if drainer != "none" or "backsplash" in text or "upstand" in text:
+        features["backsplash"] = True
+    return features
+
+
 def fallback_spec(product: Product) -> SpecResult:
+    if product.category == "sink":
+        features = _sink_features(product)
+    else:
+        features = dict(CATEGORY_DEFAULTS.get(product.category, {}))
     spec = BuildSpec(
         product_type=product.category,
         width_mm=product.width_mm,
         depth_mm=product.depth_mm,
         height_mm=product.height_mm,
-        features=dict(CATEGORY_DEFAULTS.get(product.category, {})),
+        features=features,
     )
     return SpecResult(spec=spec, source="fallback")
 
@@ -80,7 +98,11 @@ def _gemini_spec(product: Product) -> SpecResult:
         f"x {product.height_mm} mm\n"
         f"Description: {product.description}\n"
         "Use the exact dimensions given. Set features appropriate for the "
-        'category, for example {"undershelf": true}, {"doors": 1} or {"basins": 1}.'
+        'category, for example {"undershelf": true}, {"doors": 1} or {"basins": 1}.\n'
+        'For sinks infer "basins" (1 or 2), "drainer" ("left", "right" or "none") '
+        'and "backsplash" (true or false) from the name and description. Example: '
+        '"Double Sink - Right Hand Drainer" means basins 2, drainer "right", '
+        "backsplash true."
     )
     response = client.models.generate_content(
         model=GEMINI_MODEL,

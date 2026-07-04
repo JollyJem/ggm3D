@@ -30,6 +30,15 @@ def test_fallback_spec_without_key(monkeypatch):
         assert result.spec.width_mm == 1000
 
 
+def test_fallback_parses_sink_keywords(monkeypatch):
+    monkeypatch.setattr(llm, "get_settings", lambda: Settings())
+    product = _product("sink")
+    product.name = "Double Sink - Right Hand Drainer"
+    result = llm.get_build_spec(product)
+    assert result.source == "fallback"
+    assert result.spec.features == {"basins": 2, "drainer": "right", "backsplash": True}
+
+
 def test_response_schema_matches_buildspec():
     # the hand-written Gemini schema must not drift from the Pydantic model
     assert set(llm.RESPONSE_SCHEMA["properties"]) == set(BuildSpec.model_fields)

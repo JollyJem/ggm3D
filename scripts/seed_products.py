@@ -1,4 +1,4 @@
-"""Seed the 6 demo products into Supabase.
+"""Seed the demo products into Supabase.
 
 Usage: python scripts/seed_products.py
 In supabase mode (SUPABASE_URL and SUPABASE_SERVICE_KEY set) the products are

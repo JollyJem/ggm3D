@@ -30,7 +30,10 @@ class BuildSpec(BaseModel):
     width_mm: int
     depth_mm: int
     height_mm: int
-    features: dict = {}  # example: {"undershelf": True, "doors": 1, "basins": 1}
+    # examples: {"undershelf": True}, {"doors": 1},
+    # {"basins": 2, "drainer": "right", "backsplash": True}
+    # sink keys: basins int, drainer "left" | "right" | "none", backsplash bool
+    features: dict = {}
 
 
 class SpecResult(BaseModel):

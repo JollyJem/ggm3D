@@ -94,6 +94,29 @@ def feet(
     ]
 
 
+def drainer_board(
+    width: float,
+    depth: float,
+    counter_top: float,
+    center_x: float,
+    thickness: float = 20.0,
+) -> trimesh.Trimesh:
+    """Raised drainer slab resting on the counter top."""
+    return box_part(width, depth, thickness, (center_x, 0.0, counter_top + thickness / 2))
+
+
+def backsplash(
+    width: float,
+    height: float,
+    counter_top: float,
+    back_y: float,
+    thickness: float = 30.0,
+) -> trimesh.Trimesh:
+    """Rear upstand panel rising from the counter top along the back edge."""
+    center = (0.0, back_y + thickness / 2, counter_top + height / 2)
+    return box_part(width, thickness, height, center)
+
+
 def basin(
     width: float,
     depth: float,
