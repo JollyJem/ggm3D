@@ -1,6 +1,8 @@
+import typing
+
 from app import llm
 from app.config import Settings
-from app.schemas import Product
+from app.schemas import BuildSpec, Product
 
 
 def _product(category: str) -> Product:
@@ -26,3 +28,12 @@ def test_fallback_spec_without_key(monkeypatch):
         assert result.spec.product_type == category
         assert result.spec.features == features
         assert result.spec.width_mm == 1000
+
+
+def test_response_schema_matches_buildspec():
+    # the hand-written Gemini schema must not drift from the Pydantic model
+    assert set(llm.RESPONSE_SCHEMA["properties"]) == set(BuildSpec.model_fields)
+    assert llm.RESPONSE_SCHEMA["properties"]["product_type"]["enum"] == list(
+        typing.get_args(BuildSpec.model_fields["product_type"].annotation)
+    )
+    assert "additionalProperties" not in str(llm.RESPONSE_SCHEMA)

@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "PowerShell(Get-ChildItem -Force | Select-Object Name, Length; python --version)",
-      "Bash(pip show *)"
+      "Bash(pip show *)",
+      "PowerShell(& C:\\\\Development\\\\ggm3D\\\\.venv\\\\Scripts\\\\python.exe -m uvicorn app.main:app --reload)"
     ]
   }
 }

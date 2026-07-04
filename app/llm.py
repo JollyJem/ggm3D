@@ -20,6 +20,32 @@ CATEGORY_DEFAULTS: dict[str, dict] = {
     "sink": {"basins": 1},
 }
 
+# Hand-written schema for Gemini structured output. BuildSpec.features is an
+# open dict, whose generated schema carries additionalProperties — rejected by
+# the Gemini Developer API — so the known feature keys are spelled out here.
+# The reply is still validated with BuildSpec below.
+RESPONSE_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "product_type": {
+            "type": "string",
+            "enum": ["work_table", "fridge", "sink"],
+        },
+        "width_mm": {"type": "integer"},
+        "depth_mm": {"type": "integer"},
+        "height_mm": {"type": "integer"},
+        "features": {
+            "type": "object",
+            "properties": {
+                "undershelf": {"type": "boolean"},
+                "doors": {"type": "integer"},
+                "basins": {"type": "integer"},
+            },
+        },
+    },
+    "required": ["product_type", "width_mm", "depth_mm", "height_mm", "features"],
+}
+
 
 def fallback_spec(product: Product) -> SpecResult:
     spec = BuildSpec(
@@ -61,7 +87,7 @@ def _gemini_spec(product: Product) -> SpecResult:
         contents=prompt,
         config={
             "response_mime_type": "application/json",
-            "response_schema": BuildSpec,
+            "response_schema": RESPONSE_SCHEMA,
             "temperature": 0.2,
         },
     )
