@@ -71,3 +71,19 @@ delete from storage.objects
   where bucket_id = 'models'
     and name in ('0b6f9c1a-1111-4a01-8a01-000000000003.glb',
                  '0b6f9c1a-1111-4a01-8a01-000000000003.usdz');
+
+-- Work table matched to the real GGM product (600x700x850). The cached
+-- spec and GLB still describe the old 1200 mm table, so drop the models
+-- row and stored files; the next Generate rebuilds at the new size.
+update public.products
+  set name      = 'Commercial Stainless Steel Centre Table PREMIUM - 600x700mm - with Undershelf',
+      width_mm  = 600,
+      depth_mm  = 700,
+      height_mm = 850
+  where id = '0b6f9c1a-1111-4a01-8a01-000000000001';
+delete from public.models
+  where product_id = '0b6f9c1a-1111-4a01-8a01-000000000001';
+delete from storage.objects
+  where bucket_id = 'models'
+    and name in ('0b6f9c1a-1111-4a01-8a01-000000000001.glb',
+                 '0b6f9c1a-1111-4a01-8a01-000000000001.usdz');

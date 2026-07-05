@@ -37,7 +37,7 @@ CASES = [
         build_work_table,
         BuildSpec(
             product_type="work_table",
-            width_mm=1200,
+            width_mm=600,
             depth_mm=700,
             height_mm=850,
             features={"undershelf": True},

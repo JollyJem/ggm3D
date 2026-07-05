@@ -24,9 +24,9 @@ def _image_url(slug: str) -> str:
 SEED_PRODUCTS: list[dict] = [
     {
         "id": "0b6f9c1a-1111-4a01-8a01-000000000001",
-        "name": "Work table with undershelf",
+        "name": "Commercial Stainless Steel Centre Table PREMIUM - 600x700mm - with Undershelf",
         "category": "work_table",
-        "width_mm": 1200,
+        "width_mm": 600,
         "depth_mm": 700,
         "height_mm": 850,
         "image_url": _image_url("work_table"),
