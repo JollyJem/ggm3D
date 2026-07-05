@@ -59,3 +59,15 @@ on conflict (id) do update set public = true;
 drop policy if exists "public read model files" on storage.objects;
 create policy "public read model files"
   on storage.objects for select using (bucket_id = 'models');
+
+-- Cleanup: the single-basin sink was retired in favor of the double sink
+-- (product ...0007). Idempotent; the models row would also go via the FK
+-- cascade, but the explicit delete keeps the intent readable.
+delete from public.models
+  where product_id = '0b6f9c1a-1111-4a01-8a01-000000000003';
+delete from public.products
+  where id = '0b6f9c1a-1111-4a01-8a01-000000000003';
+delete from storage.objects
+  where bucket_id = 'models'
+    and name in ('0b6f9c1a-1111-4a01-8a01-000000000003.glb',
+                 '0b6f9c1a-1111-4a01-8a01-000000000003.usdz');

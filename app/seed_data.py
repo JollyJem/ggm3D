@@ -1,4 +1,4 @@
-"""The 7 demo products. Single source of truth for the seed script and
+"""The 6 demo products. Single source of truth for the seed script and
 the local fallback used when Supabase is not configured.
 
 Dimensions from public GGM Gastro catalog pages. Internal demo use only.
@@ -41,16 +41,6 @@ SEED_PRODUCTS: list[dict] = [
         "height_mm": 2050,
         "image_url": _image_url("fridge"),
         "description": "Upright stainless steel refrigerated cabinet with a single full-height door.",
-    },
-    {
-        "id": "0b6f9c1a-1111-4a01-8a01-000000000003",
-        "name": "Sink unit with one basin",
-        "category": "sink",
-        "width_mm": 1200,
-        "depth_mm": 600,
-        "height_mm": 850,
-        "image_url": _image_url("sink"),
-        "description": "Stainless steel sink unit with one deep basin and a drainer surface.",
     },
     {
         "id": "0b6f9c1a-1111-4a01-8a01-000000000004",

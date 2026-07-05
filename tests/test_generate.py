@@ -8,7 +8,7 @@ from app.seed_data import SEED_PRODUCTS
 client = TestClient(app)
 
 PARAMETRIC_ID = SEED_PRODUCTS[0]["id"]  # work table
-AI_ID = SEED_PRODUCTS[3]["id"]  # planetary mixer
+AI_ID = SEED_PRODUCTS[2]["id"]  # planetary mixer
 
 
 @pytest.fixture(autouse=True)
@@ -54,7 +54,7 @@ def _install_ai_placeholder() -> None:
     from app.generator.placeholder import build_placeholder
     from app.schemas import Product, SpecResult
 
-    product = Product(**SEED_PRODUCTS[3])
+    product = Product(**SEED_PRODUCTS[2])
     glb = build_placeholder(product).export(file_type="glb")
     storage.save_model(product.id, glb, SpecResult(source="placeholder"))
 
