@@ -19,6 +19,12 @@ def test_catalog_lists_all_products():
         assert product["name"] in resp.text
 
 
+def test_catalog_shows_qr_code():
+    resp = client.get("/")
+    assert 'src="/static/img/qr.png"' in resp.text
+    assert "Scan to open on your phone" in resp.text
+
+
 def test_product_detail_has_viewer_with_ar():
     resp = client.get(f"/products/{SEED_PRODUCTS[0]['id']}")
     assert resp.status_code == 200
