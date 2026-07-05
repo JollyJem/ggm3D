@@ -3,11 +3,11 @@
 {% block content %}
 <div class="flex items-start justify-between gap-3 mb-4">
   <h1 class="text-2xl font-bold">Products</h1>
-  <!-- static QR from scripts/make_qr.py, links to the deployed app -->
-  <div class="flex items-center gap-2 shrink-0">
+  <!-- static QR from scripts/make_qr.py; desktop only, on a phone you are already here -->
+  <div class="hidden sm:flex items-center gap-2 shrink-0">
     <span class="text-xs text-gray-500 text-right w-20 leading-tight">Scan to open on your phone</span>
     <img src="/static/img/qr.png" alt="QR code for ggm3d.onrender.com"
-         class="w-14 h-14 sm:w-16 sm:h-16 rounded border border-gray-200 bg-white">
+         class="w-16 h-16 rounded border border-gray-200 bg-white">
   </div>
 </div>
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

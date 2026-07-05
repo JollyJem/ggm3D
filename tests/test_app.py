@@ -23,6 +23,8 @@ def test_catalog_shows_qr_code():
     resp = client.get("/")
     assert 'src="/static/img/qr.png"' in resp.text
     assert "Scan to open on your phone" in resp.text
+    # desktop only: hidden below the sm breakpoint, phones are already here
+    assert 'class="hidden sm:flex' in resp.text
 
 
 def test_product_detail_has_viewer_with_ar():
