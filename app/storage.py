@@ -28,6 +28,9 @@ def save_model(product_id: str, glb_bytes: bytes, spec: SpecResult) -> str:
     (MODELS_DIR / f"{product_id}.spec.json").write_text(
         spec.model_dump_json(indent=2), encoding="utf-8"
     )
+    # the old USDZ no longer matches the new GLB; drop it so the viewer
+    # omits ios-src instead of sending iPhones an outdated model
+    (MODELS_DIR / f"{product_id}.usdz").unlink(missing_ok=True)
     return get_model_url(product_id) or ""
 
 
@@ -113,6 +116,9 @@ def _save_supabase(product_id: str, glb_bytes: bytes, spec: SpecResult) -> str:
             "method": method,
             "status": "ready",
             "glb_url": glb_url,
+            # new GLB invalidates any previously converted USDZ;
+            # scripts/convert_usdz.py repopulates it
+            "usdz_url": "",
             "spec_json": spec.model_dump(),
             "error": "",
             "updated_at": datetime.now(timezone.utc).isoformat(),

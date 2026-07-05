@@ -87,6 +87,22 @@ def test_ai_product_pending_without_cache():
     assert not (storage.MODELS_DIR / f"{AI_ID}.glb").exists()
 
 
+def test_regenerate_clears_stale_usdz():
+    client.post(f"/products/{PARAMETRIC_ID}/generate")
+    storage.save_usdz(PARAMETRIC_ID, b"stale usdz bytes")
+    status = client.get(f"/products/{PARAMETRIC_ID}/model-status")
+    assert "ios-src" in status.text
+
+    # a fresh GLB invalidates the converted USDZ; the viewer must fall
+    # back to no ios-src rather than hand iPhones an outdated model
+    client.post(f"/products/{PARAMETRIC_ID}/generate")
+    assert storage.get_usdz_url(PARAMETRIC_ID) is None
+    assert not (storage.MODELS_DIR / f"{PARAMETRIC_ID}.usdz").exists()
+    status = client.get(f"/products/{PARAMETRIC_ID}/model-status")
+    assert "<model-viewer" in status.text
+    assert "ios-src" not in status.text
+
+
 def test_detail_page_shows_generated_model_when_present():
     client.post(f"/products/{PARAMETRIC_ID}/generate")
     page = client.get(f"/products/{PARAMETRIC_ID}")
