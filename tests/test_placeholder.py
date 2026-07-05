@@ -5,11 +5,37 @@ import trimesh
 
 from app.generator.placeholder import build_placeholder
 from app.schemas import Product
-from app.seed_data import SEED_PRODUCTS
 
 TOL = 0.001  # 1 mm, in meters
 
-AI_CASES = [Product(**p) for p in SEED_PRODUCTS if p["category"] in ("mixer", "faucet", "grill")]
+# The retired ai seed products, kept as synthetic cases: the placeholder
+# builder is still live code and must honor real-scale dimensions.
+AI_CASES = [
+    Product(
+        id="00000000-0000-4000-8000-0000000000a1",
+        name="Test planetary mixer",
+        category="mixer",
+        width_mm=520,
+        depth_mm=430,
+        height_mm=780,
+    ),
+    Product(
+        id="00000000-0000-4000-8000-0000000000a2",
+        name="Test pre-rinse faucet",
+        category="faucet",
+        width_mm=250,
+        depth_mm=300,
+        height_mm=1200,
+    ),
+    Product(
+        id="00000000-0000-4000-8000-0000000000a3",
+        name="Test contact grill",
+        category="grill",
+        width_mm=550,
+        depth_mm=400,
+        height_mm=250,
+    ),
+]
 IDS = [p.category for p in AI_CASES]
 
 

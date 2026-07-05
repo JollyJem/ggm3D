@@ -67,10 +67,9 @@ delete from public.models
   where product_id = '0b6f9c1a-1111-4a01-8a01-000000000003';
 delete from public.products
   where id = '0b6f9c1a-1111-4a01-8a01-000000000003';
-delete from storage.objects
-  where bucket_id = 'models'
-    and name in ('0b6f9c1a-1111-4a01-8a01-000000000003.glb',
-                 '0b6f9c1a-1111-4a01-8a01-000000000003.usdz');
+-- Storage files cannot be deleted from the SQL editor (storage.objects is
+-- owner-only). Delete {product_id}.glb / .usdz by hand in the dashboard's
+-- models bucket when a product is retired or its cached model goes stale.
 
 -- Work table matched to the real GGM product (600x700x850). The cached
 -- spec and GLB still describe the old 1200 mm table, so drop the models
@@ -83,7 +82,17 @@ update public.products
   where id = '0b6f9c1a-1111-4a01-8a01-000000000001';
 delete from public.models
   where product_id = '0b6f9c1a-1111-4a01-8a01-000000000001';
-delete from storage.objects
-  where bucket_id = 'models'
-    and name in ('0b6f9c1a-1111-4a01-8a01-000000000001.glb',
-                 '0b6f9c1a-1111-4a01-8a01-000000000001.usdz');
+
+-- Cleanup: catalog trimmed to the work table and the double sink. The
+-- fridge, mixer, faucet, and grill were retired; their bucket files go
+-- manually (see the note above).
+delete from public.models
+  where product_id in ('0b6f9c1a-1111-4a01-8a01-000000000002',
+                       '0b6f9c1a-1111-4a01-8a01-000000000004',
+                       '0b6f9c1a-1111-4a01-8a01-000000000005',
+                       '0b6f9c1a-1111-4a01-8a01-000000000006');
+delete from public.products
+  where id in ('0b6f9c1a-1111-4a01-8a01-000000000002',
+               '0b6f9c1a-1111-4a01-8a01-000000000004',
+               '0b6f9c1a-1111-4a01-8a01-000000000005',
+               '0b6f9c1a-1111-4a01-8a01-000000000006');

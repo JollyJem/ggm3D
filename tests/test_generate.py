@@ -1,14 +1,27 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app import main, storage
+from app import db, main, storage
 from app.main import app
+from app.schemas import Product
 from app.seed_data import SEED_PRODUCTS
 
 client = TestClient(app)
 
 PARAMETRIC_ID = SEED_PRODUCTS[0]["id"]  # work table
-AI_ID = SEED_PRODUCTS[2]["id"]  # planetary mixer
+
+# The catalog is parametric-only since the ai products were retired, but the
+# ai serving path in main.py is still live code; exercise it with a synthetic
+# product injected at the db layer.
+AI_PRODUCT = Product(
+    id="00000000-0000-4000-8000-0000000000a1",
+    name="Test planetary mixer",
+    category="mixer",
+    width_mm=520,
+    depth_mm=430,
+    height_mm=780,
+)
+AI_ID = AI_PRODUCT.id
 
 
 @pytest.fixture(autouse=True)
@@ -17,6 +30,17 @@ def isolated_storage(tmp_path, monkeypatch):
     main.JOBS.clear()
     yield
     main.JOBS.clear()
+
+
+@pytest.fixture
+def ai_product(monkeypatch):
+    real_get = db.get_product
+    monkeypatch.setattr(
+        db,
+        "get_product",
+        lambda pid: AI_PRODUCT if pid == AI_ID else real_get(pid),
+    )
+    return AI_PRODUCT
 
 
 def test_generate_parametric_flow():
@@ -52,14 +76,13 @@ def test_generate_reuses_cached_spec(monkeypatch):
 
 def _install_ai_placeholder() -> None:
     from app.generator.placeholder import build_placeholder
-    from app.schemas import Product, SpecResult
+    from app.schemas import SpecResult
 
-    product = Product(**SEED_PRODUCTS[2])
-    glb = build_placeholder(product).export(file_type="glb")
-    storage.save_model(product.id, glb, SpecResult(source="placeholder"))
+    glb = build_placeholder(AI_PRODUCT).export(file_type="glb")
+    storage.save_model(AI_PRODUCT.id, glb, SpecResult(source="placeholder"))
 
 
-def test_generate_ai_product_served_from_cache():
+def test_generate_ai_product_served_from_cache(ai_product):
     _install_ai_placeholder()
     resp = client.post(f"/products/{AI_ID}/generate")
     assert resp.status_code == 200
@@ -70,14 +93,14 @@ def test_generate_ai_product_served_from_cache():
     assert spec.source == "placeholder"
 
 
-def test_ai_detail_page_shows_cached_model():
+def test_ai_detail_page_shows_cached_model(ai_product):
     _install_ai_placeholder()
     page = client.get(f"/products/{AI_ID}")
     assert f"{AI_ID}.glb" in page.text
     assert "Model pending" not in page.text
 
 
-def test_ai_product_pending_without_cache():
+def test_ai_product_pending_without_cache(ai_product):
     resp = client.post(f"/products/{AI_ID}/generate")
     assert resp.status_code == 200
     assert "Model pending" in resp.text
