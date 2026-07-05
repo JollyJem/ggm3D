@@ -60,6 +60,42 @@ def get_model_url(product_id: str) -> str | None:
     return f"/static/models/{product_id}.glb?v={int(path.stat().st_mtime)}"
 
 
+def get_usdz_url(product_id: str) -> str | None:
+    """Public URL for the product's USDZ (iPhone Quick Look), None when absent."""
+    if db.MODE == "supabase":
+        row = _fetch_model_row(product_id)
+        if row and row.get("status") == "ready" and row.get("usdz_url"):
+            return row["usdz_url"]
+    path = MODELS_DIR / f"{product_id}.usdz"
+    if not path.is_file():
+        return None
+    return f"/static/models/{product_id}.usdz?v={int(path.stat().st_mtime)}"
+
+
+def save_usdz(product_id: str, usdz_bytes: bytes) -> str:
+    """Store a USDZ next to the product's GLB and record it in models.usdz_url."""
+    if db.MODE == "supabase" and db.get_client() is not None:
+        client = db.get_client()
+        path = f"{product_id}.usdz"
+        client.storage.from_(BUCKET).upload(
+            path,
+            usdz_bytes,
+            file_options={"content-type": "model/vnd.usdz+zip", "upsert": "true"},
+        )
+        public_url = client.storage.from_(BUCKET).get_public_url(path).rstrip("?")
+        usdz_url = f"{public_url}?v={int(time.time())}"
+        client.table("models").update(
+            {
+                "usdz_url": usdz_url,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+        ).eq("product_id", product_id).execute()
+        return usdz_url
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    (MODELS_DIR / f"{product_id}.usdz").write_bytes(usdz_bytes)
+    return get_usdz_url(product_id) or ""
+
+
 def _save_supabase(product_id: str, glb_bytes: bytes, spec: SpecResult) -> str:
     client = db.get_client()
     path = f"{product_id}.glb"
@@ -93,7 +129,7 @@ def _fetch_model_row(product_id: str) -> dict | None:
     try:
         rows = (
             client.table("models")
-            .select("status, glb_url, spec_json")
+            .select("status, glb_url, usdz_url, spec_json")
             .eq("product_id", product_id)
             .execute()
             .data

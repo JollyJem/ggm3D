@@ -1,8 +1,9 @@
 <model-viewer
   src="{{ glb_url }}"
+  {% if usdz_url %}ios-src="{{ usdz_url }}"{% endif %}
   alt="3D model of {{ product.name }}"
   ar
-  ar-modes="scene-viewer webxr"
+  ar-modes="scene-viewer webxr quick-look"
   ar-scale="fixed"
   camera-controls
   auto-rotate

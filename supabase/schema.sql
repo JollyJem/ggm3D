@@ -22,11 +22,16 @@ create table if not exists public.models (
   status text not null default 'pending'
     check (status in ('pending', 'running', 'ready', 'failed')),
   glb_url text default '',
+  usdz_url text default '',
   spec_json jsonb,
   error text default '',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- iPhone AR: USDZ variant of the GLB, served to Quick Look via ios-src.
+-- No-op on fresh databases (column is in the create above); migrates old ones.
+alter table public.models add column if not exists usdz_url text default '';
 
 -- one model per product; upsert target for storage.save_model
 create unique index if not exists models_product_id_key

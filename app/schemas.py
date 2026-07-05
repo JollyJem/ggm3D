@@ -22,6 +22,7 @@ class ModelRecord(BaseModel):
     method: Literal["parametric", "ai"]
     status: Literal["pending", "running", "ready", "failed"]
     glb_url: str = ""
+    usdz_url: str = ""
     error: str = ""
 
 

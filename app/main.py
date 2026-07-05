@@ -102,6 +102,7 @@ def product_detail(request: Request, product_id: str):
         {
             "product": product,
             "glb_url": glb_url or SAMPLE_GLB_URL,
+            "usdz_url": storage.get_usdz_url(product_id) if glb_url else None,
             "is_sample": glb_url is None,
             "has_model": glb_url is not None,
             "method": generator.method_for(product.category),
@@ -137,7 +138,12 @@ def generate(request: Request, product_id: str, background_tasks: BackgroundTask
             return templates.TemplateResponse(
                 request,
                 "partials/viewer.html",
-                {"product": product, "glb_url": glb_url, "is_sample": False},
+                {
+                    "product": product,
+                    "glb_url": glb_url,
+                    "usdz_url": storage.get_usdz_url(product_id),
+                    "is_sample": False,
+                },
             )
         return templates.TemplateResponse(
             request, "partials/status.html", {"product": product, "status": "pending"}
@@ -166,7 +172,12 @@ def model_status(request: Request, product_id: str):
         return templates.TemplateResponse(
             request,
             "partials/viewer.html",
-            {"product": product, "glb_url": glb_url, "is_sample": False},
+            {
+                "product": product,
+                "glb_url": glb_url,
+                "usdz_url": storage.get_usdz_url(product_id),
+                "is_sample": False,
+            },
         )
     return templates.TemplateResponse(
         request,

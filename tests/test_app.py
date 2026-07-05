@@ -23,7 +23,7 @@ def test_product_detail_has_viewer_with_ar():
     resp = client.get(f"/products/{SEED_PRODUCTS[0]['id']}")
     assert resp.status_code == 200
     assert "<model-viewer" in resp.text
-    assert 'ar-modes="scene-viewer webxr"' in resp.text
+    assert 'ar-modes="scene-viewer webxr quick-look"' in resp.text
     # generated model when one exists, hand-placed sample otherwise
     assert 'src="/static/models/' in resp.text
 
