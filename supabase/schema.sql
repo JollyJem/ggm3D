@@ -12,8 +12,13 @@ create table if not exists public.products (
   height_mm int not null,
   image_url text default '',
   description text default '',
+  product_url text default '',
   created_at timestamptz not null default now()
 );
+
+-- Link out to the public GGM Gastro catalog page for the product.
+-- No-op on fresh databases (column is in the create above); migrates old ones.
+alter table public.products add column if not exists product_url text default '';
 
 create table if not exists public.models (
   id uuid primary key default gen_random_uuid(),

@@ -14,6 +14,8 @@ class Product(BaseModel):
     height_mm: int
     image_url: str = ""
     description: str = ""
+    # public GGM Gastro catalog page for this product; empty hides the link
+    product_url: str = ""
 
 
 class ModelRecord(BaseModel):
