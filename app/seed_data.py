@@ -37,7 +37,7 @@ SEED_PRODUCTS: list[dict] = [
         "category": "sink",
         "width_mm": 2000,
         "depth_mm": 700,
-        "height_mm": 850,
+        "height_mm": 970,
         "image_url": _image_url("sink_double"),
         "description": "Double sink with right hand drainer and rear backsplash, stainless steel.",
     },

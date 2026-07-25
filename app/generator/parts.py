@@ -3,6 +3,8 @@
 Builders rotate to glTF Y-up and scale to meters once, on export.
 """
 
+import math
+
 import trimesh
 
 Vec3 = tuple[float, float, float]
@@ -12,6 +14,25 @@ def box_part(width: float, depth: float, height: float, center: Vec3) -> trimesh
     part = trimesh.creation.box(extents=(width, depth, height))
     part.apply_translation(center)
     return part
+
+
+def box_from_bounds(
+    x0: float, x1: float, y0: float, y1: float, z0: float, z1: float
+) -> trimesh.Trimesh:
+    """Axis-aligned box from its min/max corners. Handy for absolute layouts."""
+    return box_part(
+        x1 - x0, y1 - y0, z1 - z0, ((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2)
+    )
+
+
+def round_bar_x(
+    x0: float, x1: float, y: float, z: float, radius: float, sections: int = 16
+) -> trimesh.Trimesh:
+    """Round tube running along X (front cross rail), centered at (·, y, z)."""
+    bar = trimesh.creation.cylinder(radius=radius, height=x1 - x0, sections=sections)
+    bar.apply_transform(trimesh.transformations.rotation_matrix(math.pi / 2, [0, 1, 0]))
+    bar.apply_translation(((x0 + x1) / 2, y, z))
+    return bar
 
 
 def cylinder_part(
@@ -28,20 +49,104 @@ def top_slab(
     return box_part(width, depth, thickness, (0, 0, top_z - thickness / 2))
 
 
+def leg_centers(
+    width: float, depth: float, side: float = 40.0, inset: float = 15.0
+) -> list[tuple[float, float]]:
+    """(x, y) of the four leg axes; casters reuse them to sit under the legs."""
+    lx = width / 2 - inset - side / 2
+    ly = depth / 2 - inset - side / 2
+    return [(sx * lx, sy * ly) for sx in (-1, 1) for sy in (-1, 1)]
+
+
 def legs(
     width: float,
     depth: float,
     height: float,
     side: float = 40.0,
     inset: float = 15.0,
+    bottom_z: float = 0.0,
 ) -> list[trimesh.Trimesh]:
-    lx = width / 2 - inset - side / 2
-    ly = depth / 2 - inset - side / 2
     return [
-        box_part(side, side, height, (sx * lx, sy * ly, height / 2))
-        for sx in (-1, 1)
-        for sy in (-1, 1)
+        box_part(side, side, height, (x, y, bottom_z + height / 2))
+        for x, y in leg_centers(width, depth, side, inset)
     ]
+
+
+def edge_lip(
+    width: float,
+    depth: float,
+    top_z: float,
+    height: float = 60.0,
+    thickness: float = 15.0,
+) -> list[trimesh.Trimesh]:
+    """Downturned rim under the top slab: four thin plates flush with the edges."""
+    z = top_z - height / 2
+    return [
+        box_part(width, thickness, height, (0, s * (depth - thickness) / 2, z))
+        for s in (-1, 1)
+    ] + [
+        box_part(thickness, depth - 2 * thickness, height, (s * (width - thickness) / 2, 0, z))
+        for s in (-1, 1)
+    ]
+
+
+def cabinet_walls(
+    width: float,
+    depth: float,
+    height: float,
+    bottom_z: float,
+    center: tuple[float, float] = (0.0, 0.0),
+    thickness: float = 15.0,
+    floor: bool = False,
+) -> list[trimesh.Trimesh]:
+    """Box of four side panels (front, back, left, right) enclosing a cabinet
+    zone under a counter. With floor=True a bottom panel closes the base."""
+    cx, cy = center
+    z = bottom_z + height / 2
+    front_back = [
+        box_part(width, thickness, height, (cx, cy + s * (depth - thickness) / 2, z))
+        for s in (-1, 1)
+    ]
+    left_right = [
+        box_part(thickness, depth - 2 * thickness, height, (cx + s * (width - thickness) / 2, cy, z))
+        for s in (-1, 1)
+    ]
+    panels = front_back + left_right
+    if floor:
+        panels.append(box_part(width, depth, thickness, (cx, cy, bottom_z + thickness / 2)))
+    return panels
+
+
+def caster_wheel(radius: float, width: float, center: Vec3) -> trimesh.Trimesh:
+    """Caster wheel disc, axle along the y axis; center is the axle center."""
+    wheel = trimesh.creation.cylinder(radius=radius, height=width, sections=24)
+    wheel.apply_transform(trimesh.transformations.rotation_matrix(math.pi / 2, [1, 0, 0]))
+    wheel.apply_translation(center)
+    return wheel
+
+
+def caster_bracket(
+    wheel_radius: float, wheel_width: float, top_z: float, center: Vec3
+) -> trimesh.Trimesh:
+    """Swivel fork: mount plate under the leg plus two plates straddling the wheel.
+
+    center is the wheel's axle center; the fork sides reach just below it.
+    """
+    cx, cy, axle_z = center
+    plate_t = 10.0
+    plate = box_part(55.0, 55.0, plate_t, (cx, cy, top_z - plate_t / 2))
+    side_t = 8.0
+    side_h = (top_z - plate_t) - (axle_z - 12.0)
+    sides = [
+        box_part(
+            wheel_radius * 1.4,
+            side_t,
+            side_h,
+            (cx, cy + s * (wheel_width / 2 + side_t / 2 + 2.0), axle_z - 12.0 + side_h / 2),
+        )
+        for s in (-1, 1)
+    ]
+    return trimesh.util.concatenate([plate, *sides])
 
 
 def undershelf(
@@ -103,6 +208,45 @@ def drainer_board(
 ) -> trimesh.Trimesh:
     """Raised drainer slab resting on the counter top."""
     return box_part(width, depth, thickness, (center_x, 0.0, counter_top + thickness / 2))
+
+
+def drainer_ribs(
+    x0: float,
+    x1: float,
+    y0: float,
+    y1: float,
+    top_z: float,
+    pitch: float = 30.0,
+    rib_w: float = 8.0,
+    rib_h: float = 4.0,
+) -> list[trimesh.Trimesh]:
+    """Parallel raised ribs running front to back (along Y), evenly spaced
+    across X at the given pitch, resting on the drainer surface at top_z."""
+    z = top_z + rib_h / 2
+    n = int((x1 - x0) / pitch)
+    xs = [x0 + i * pitch for i in range(n + 1)]
+    return [box_part(rib_w, y1 - y0, rib_h, (x, (y0 + y1) / 2, z)) for x in xs]
+
+
+def lipped_shelf(
+    x0: float,
+    x1: float,
+    y0: float,
+    y1: float,
+    top_z: float,
+    lip: float = 25.0,
+    sheet: float = 6.0,
+    edge_t: float = 12.0,
+) -> list[trimesh.Trimesh]:
+    """Flat sheet with four short downturned edges: a folded-metal lower shelf."""
+    z0 = top_z - lip
+    return [
+        box_from_bounds(x0, x1, y0, y1, top_z - sheet, top_z),
+        box_from_bounds(x0, x1, y0, y0 + edge_t, z0, top_z),
+        box_from_bounds(x0, x1, y1 - edge_t, y1, z0, top_z),
+        box_from_bounds(x0, x0 + edge_t, y0, y1, z0, top_z),
+        box_from_bounds(x1 - edge_t, x1, y0, y1, z0, top_z),
+    ]
 
 
 def backsplash(

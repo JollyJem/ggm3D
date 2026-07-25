@@ -16,6 +16,39 @@ FEET_H = 100.0
 BASIN_DEPTH = 250.0
 BACKSPLASH_H = 100.0
 DRAINER_T = 20.0
+# Commercial Dishwasher Sink Unit PREMIUM (product 7): absolute mm layout,
+# X 0..2000 left->right, Y 0..700 front->back, then recentered to floor center.
+DBL_WORKTOP_T = 45.0  # worktop slab thickness
+DBL_RIM_H = 60.0  # downturned front/side rim under the worktop
+DBL_BASIN_DEPTH = 250.0  # bowl recess below the worktop top
+# basin openings (rims flush with the worktop), left section
+DBL_BASIN_1 = (120.0, 560.0)  # x0, x1
+DBL_BASIN_2 = (640.0, 1080.0)
+DBL_BASIN_Y = (170.0, 560.0)  # both basins, front->back
+# ribbed drainer, then a flat worktop out to the right edge
+DBL_DRAINER_X = (1150.0, 1650.0)
+DBL_DRAINER_Y = (150.0, 560.0)
+RIB_H = 4.0  # drainer rib height
+# four corner legs frame ONLY the left basin section (X 80..1150). The whole
+# right section (drainer + flat worktop) cantilevers over an open dishwasher
+# bay: no legs, no apron, no shelf there.
+DBL_LEG = 40.0
+DBL_LEG_X = (80.0, 1150.0)
+DBL_LEG_Y = (80.0, 620.0)
+DBL_APRON_X = (60.0, 1150.0)  # solid front panel under the basins only
+DBL_APRON_DROP = 250.0
+DBL_SHELF_TOP = 200.0  # lower undershelf top, ~200 mm above the floor
+DBL_RAIL_R = 15.0  # front cross rail, ~30 mm diameter
+FOOT_H = 50.0  # adjustable bullet foot under each leg
+FOOT_R = 18.0
+# work table: thin top with a downturned lip, legs on swivel casters
+TOP_T = 20.0
+LIP_H = 60.0
+CASTER_H = 100.0
+# leg axes sit 35 mm inside the edge; radius must stay under that so the
+# wheel disc never widens the bounding box past the spec
+WHEEL_R = 32.5
+WHEEL_W = 32.0
 
 
 def to_scene(
@@ -38,11 +71,17 @@ def to_scene(
 
 def build_work_table(spec: BuildSpec) -> trimesh.Scene:
     w, d, h = float(spec.width_mm), float(spec.depth_mm), float(spec.height_mm)
-    steel = [parts.top_slab(w, d, top_z=h, thickness=SLAB_T)]
-    steel += parts.legs(w, d, height=h - SLAB_T)
+    # h includes the casters, so the tabletop lands at the real height
+    steel = [parts.top_slab(w, d, top_z=h, thickness=TOP_T)]
+    steel += parts.edge_lip(w, d, top_z=h - TOP_T, height=LIP_H)
+    steel += parts.legs(w, d, height=h - TOP_T - CASTER_H, bottom_z=CASTER_H)
     if spec.features.get("undershelf", True):
-        steel.append(parts.undershelf(w, d))
-    return to_scene(steel)
+        steel.append(parts.undershelf(w, d, z=CASTER_H + 100.0))
+    plastic = []
+    for x, y in parts.leg_centers(w, d):
+        plastic.append(parts.caster_wheel(WHEEL_R, WHEEL_W, (x, y, WHEEL_R)))
+        plastic.append(parts.caster_bracket(WHEEL_R, WHEEL_W, CASTER_H, (x, y, WHEEL_R)))
+    return to_scene(steel, plastic)
 
 
 def build_fridge(spec: BuildSpec) -> trimesh.Scene:
@@ -86,9 +125,83 @@ def _basin_layout(w: float, basins: int, drainer: str, drainer_w: float):
     return bw, centers
 
 
+def _dbl_worktop(w: float, d: float, top_z: float, steel: list[trimesh.Trimesh]) -> None:
+    """Full worktop: slab with two basin openings cut, recessed tubs, the ribbed
+    drainer, a downturned front/side rim, and the rear backsplash."""
+    slab = parts.box_from_bounds(0, w, 0, d, top_z - DBL_WORKTOP_T, top_z)
+    y0, y1 = DBL_BASIN_Y
+    for x0, x1 in (DBL_BASIN_1, DBL_BASIN_2):
+        slab = slab.difference(
+            parts.box_from_bounds(x0, x1, y0, y1, top_z - DBL_WORKTOP_T * 2, top_z + 1)
+        )
+    steel.append(slab)
+    for x0, x1 in (DBL_BASIN_1, DBL_BASIN_2):
+        steel.append(
+            parts.basin(
+                x1 - x0, y1 - y0, DBL_BASIN_DEPTH, top_z=top_z,
+                center_x=(x0 + x1) / 2, center_y=(y0 + y1) / 2,
+            )
+        )
+    dx0, dx1 = DBL_DRAINER_X
+    dy0, dy1 = DBL_DRAINER_Y
+    steel += parts.drainer_ribs(dx0, dx1, dy0, dy1, top_z, rib_h=RIB_H)
+    # downturned rim on the front and both sides (the rear carries the backsplash)
+    rz0, rz1 = top_z - DBL_WORKTOP_T - DBL_RIM_H, top_z - DBL_WORKTOP_T
+    steel += [
+        parts.box_from_bounds(0, w, 0, 15, rz0, rz1),
+        parts.box_from_bounds(0, 15, 0, d, rz0, rz1),
+        parts.box_from_bounds(w - 15, w, 0, d, rz0, rz1),
+    ]
+    steel.append(parts.box_from_bounds(0, w, d - 40, d, top_z, top_z + BACKSPLASH_H))
+
+
+def _dbl_understructure(
+    top_z: float, steel: list[trimesh.Trimesh], plastic: list[trimesh.Trimesh]
+) -> None:
+    """Four corner legs on bullet feet, the solid front apron under the basins,
+    the lower undershelf, and the front cross rail. The right bay stays open."""
+    leg_top = top_z - DBL_WORKTOP_T  # legs meet the worktop underside
+    for lx in DBL_LEG_X:
+        for ly in DBL_LEG_Y:
+            steel.append(
+                parts.box_from_bounds(
+                    lx - DBL_LEG / 2, lx + DBL_LEG / 2,
+                    ly - DBL_LEG / 2, ly + DBL_LEG / 2, FOOT_H, leg_top,
+                )
+            )
+            plastic.append(parts.cylinder_part(FOOT_R, FOOT_H, (lx, ly, FOOT_H / 2)))
+    apron_top = top_z - DBL_RIM_H  # 810: just under the front rim
+    apron_bottom = apron_top - DBL_APRON_DROP  # 560
+    ax0, ax1 = DBL_APRON_X
+    steel.append(parts.box_from_bounds(ax0, ax1, 0, 15, apron_bottom, apron_top))
+    lx0, lx1 = DBL_LEG_X
+    ly0, ly1 = DBL_LEG_Y
+    steel += parts.lipped_shelf(lx0, lx1, ly0, ly1, DBL_SHELF_TOP)
+    steel.append(parts.round_bar_x(lx0, lx1, ly0, apron_bottom, DBL_RAIL_R))
+
+
+def build_double_sink(spec: BuildSpec) -> trimesh.Scene:
+    """Commercial Dishwasher Sink Unit PREMIUM (product 7). Left to right: two
+    recessed basins, a ribbed drainer, then a flat worktop that cantilevers over
+    an open dishwasher bay. A front apron and lower undershelf enclose the left
+    cabinet; four legs on adjustable feet; a rear backsplash. Built in absolute
+    mm (X 0..w, Y 0..d) then recentered so the origin sits at floor center."""
+    w, d, h = float(spec.width_mm), float(spec.depth_mm), float(spec.height_mm)
+    top_z = h - BACKSPLASH_H  # backsplash occupies the top 100 mm
+    steel: list[trimesh.Trimesh] = []
+    plastic: list[trimesh.Trimesh] = []
+    _dbl_worktop(w, d, top_z, steel)
+    _dbl_understructure(top_z, steel, plastic)
+    for mesh in steel + plastic:
+        mesh.apply_translation((-w / 2, -d / 2, 0.0))  # origin to floor center
+    return to_scene(steel, plastic)
+
+
 def build_sink(spec: BuildSpec) -> trimesh.Scene:
     w, d, h = float(spec.width_mm), float(spec.depth_mm), float(spec.height_mm)
     basins = max(1, int(spec.features.get("basins", 1)))
+    if basins >= 2:
+        return build_double_sink(spec)
     drainer = spec.features.get("drainer", "none")
     has_splash = bool(spec.features.get("backsplash", False))
     # raised parts stay under h so the bounding box matches the spec height
