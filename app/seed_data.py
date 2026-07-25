@@ -40,7 +40,7 @@ SEED_PRODUCTS: list[dict] = [
         "height_mm": 970,
         "image_url": _image_url("sink_double"),
         "description": "Double sink with right hand drainer and rear backsplash, stainless steel.",
-        "product_url": (
+        "source_url": (
             "https://www.ggmgastro.com/en-de-eur/"
             "commercial-dishwasher-sink-unit-premium-2000x700mm-double-sink-"
             "right-hand-drainer-stk207sbl2"
