@@ -6,7 +6,13 @@ import numpy as np
 import trimesh
 
 from app.generator import parts
-from app.generator.materials import apply_material, dark_plastic, stainless
+from app.generator.materials import (
+    apply_material,
+    dark_plastic,
+    face_normals,
+    stainless,
+    stainless_worktop,
+)
 from app.schemas import BuildSpec
 
 SLAB_T = 40.0
@@ -52,18 +58,29 @@ WHEEL_W = 32.0
 
 
 def to_scene(
-    steel: list[trimesh.Trimesh], plastic: list[trimesh.Trimesh] | None = None
+    steel: list[trimesh.Trimesh],
+    plastic: list[trimesh.Trimesh] | None = None,
+    worktop: list[trimesh.Trimesh] | None = None,
 ) -> trimesh.Scene:
-    """Merge parts per material, rotate Z-up mm -> Y-up meters."""
+    """Merge parts per material, rotate Z-up mm -> Y-up meters.
+
+    Horizontal surfaces go in `worktop` so they get the rougher preset; the
+    frame goes in `steel`, feet/handles/wheels in `plastic`.
+    """
     rot = trimesh.transformations.rotation_matrix(np.radians(-90), [1, 0, 0])
     scene = trimesh.Scene()
-    groups = [("steel", steel, stainless()), ("plastic", plastic or [], dark_plastic())]
+    groups = [
+        ("steel", steel, stainless()),
+        ("worktop", worktop or [], stainless_worktop()),
+        ("plastic", plastic or [], dark_plastic()),
+    ]
     for name, meshes, material in groups:
         if not meshes:
             continue
         mesh = trimesh.util.concatenate(meshes)
         mesh.apply_transform(rot)
         mesh.apply_scale(0.001)
+        face_normals(mesh)  # crisp facets and edge highlights, not a smoothed blob
         apply_material(mesh, material)
         scene.add_geometry(mesh, geom_name=name)
     return scene
@@ -72,8 +89,8 @@ def to_scene(
 def build_work_table(spec: BuildSpec) -> trimesh.Scene:
     w, d, h = float(spec.width_mm), float(spec.depth_mm), float(spec.height_mm)
     # h includes the casters, so the tabletop lands at the real height
-    steel = [parts.top_slab(w, d, top_z=h, thickness=TOP_T)]
-    steel += parts.edge_lip(w, d, top_z=h - TOP_T, height=LIP_H)
+    worktop = [parts.top_slab(w, d, top_z=h, thickness=TOP_T)]
+    steel = parts.edge_lip(w, d, top_z=h - TOP_T, height=LIP_H)
     steel += parts.legs(w, d, height=h - TOP_T - CASTER_H, bottom_z=CASTER_H)
     if spec.features.get("undershelf", True):
         steel.append(parts.undershelf(w, d, z=CASTER_H + 100.0))
@@ -81,7 +98,7 @@ def build_work_table(spec: BuildSpec) -> trimesh.Scene:
     for x, y in parts.leg_centers(w, d):
         plastic.append(parts.caster_wheel(WHEEL_R, WHEEL_W, (x, y, WHEEL_R)))
         plastic.append(parts.caster_bracket(WHEEL_R, WHEEL_W, CASTER_H, (x, y, WHEEL_R)))
-    return to_scene(steel, plastic)
+    return to_scene(steel, plastic, worktop)
 
 
 def build_fridge(spec: BuildSpec) -> trimesh.Scene:
@@ -125,16 +142,22 @@ def _basin_layout(w: float, basins: int, drainer: str, drainer_w: float):
     return bw, centers
 
 
-def _dbl_worktop(w: float, d: float, top_z: float, steel: list[trimesh.Trimesh]) -> None:
+def _dbl_worktop(
+    w: float,
+    d: float,
+    top_z: float,
+    steel: list[trimesh.Trimesh],
+    worktop: list[trimesh.Trimesh],
+) -> None:
     """Full worktop: slab with two basin openings cut, recessed tubs, the ribbed
     drainer, a downturned front/side rim, and the rear backsplash."""
-    slab = parts.box_from_bounds(0, w, 0, d, top_z - DBL_WORKTOP_T, top_z)
+    slab = parts.chamfer_box(parts.box_from_bounds(0, w, 0, d, top_z - DBL_WORKTOP_T, top_z))
     y0, y1 = DBL_BASIN_Y
     for x0, x1 in (DBL_BASIN_1, DBL_BASIN_2):
         slab = slab.difference(
             parts.box_from_bounds(x0, x1, y0, y1, top_z - DBL_WORKTOP_T * 2, top_z + 1)
         )
-    steel.append(slab)
+    worktop.append(slab)
     for x0, x1 in (DBL_BASIN_1, DBL_BASIN_2):
         steel.append(
             parts.basin(
@@ -144,7 +167,7 @@ def _dbl_worktop(w: float, d: float, top_z: float, steel: list[trimesh.Trimesh])
         )
     dx0, dx1 = DBL_DRAINER_X
     dy0, dy1 = DBL_DRAINER_Y
-    steel += parts.drainer_ribs(dx0, dx1, dy0, dy1, top_z, rib_h=RIB_H)
+    worktop += parts.drainer_ribs(dx0, dx1, dy0, dy1, top_z, rib_h=RIB_H)
     # downturned rim on the front and both sides (the rear carries the backsplash)
     rz0, rz1 = top_z - DBL_WORKTOP_T - DBL_RIM_H, top_z - DBL_WORKTOP_T
     steel += [
@@ -164,16 +187,20 @@ def _dbl_understructure(
     for lx in DBL_LEG_X:
         for ly in DBL_LEG_Y:
             steel.append(
-                parts.box_from_bounds(
-                    lx - DBL_LEG / 2, lx + DBL_LEG / 2,
-                    ly - DBL_LEG / 2, ly + DBL_LEG / 2, FOOT_H, leg_top,
+                parts.chamfer_box(
+                    parts.box_from_bounds(
+                        lx - DBL_LEG / 2, lx + DBL_LEG / 2,
+                        ly - DBL_LEG / 2, ly + DBL_LEG / 2, FOOT_H, leg_top,
+                    )
                 )
             )
             plastic.append(parts.cylinder_part(FOOT_R, FOOT_H, (lx, ly, FOOT_H / 2)))
     apron_top = top_z - DBL_RIM_H  # 810: just under the front rim
     apron_bottom = apron_top - DBL_APRON_DROP  # 560
     ax0, ax1 = DBL_APRON_X
-    steel.append(parts.box_from_bounds(ax0, ax1, 0, 15, apron_bottom, apron_top))
+    steel.append(
+        parts.chamfer_box(parts.box_from_bounds(ax0, ax1, 0, 15, apron_bottom, apron_top))
+    )
     lx0, lx1 = DBL_LEG_X
     ly0, ly1 = DBL_LEG_Y
     steel += parts.lipped_shelf(lx0, lx1, ly0, ly1, DBL_SHELF_TOP)
@@ -190,11 +217,12 @@ def build_double_sink(spec: BuildSpec) -> trimesh.Scene:
     top_z = h - BACKSPLASH_H  # backsplash occupies the top 100 mm
     steel: list[trimesh.Trimesh] = []
     plastic: list[trimesh.Trimesh] = []
-    _dbl_worktop(w, d, top_z, steel)
+    worktop: list[trimesh.Trimesh] = []
+    _dbl_worktop(w, d, top_z, steel, worktop)
     _dbl_understructure(top_z, steel, plastic)
-    for mesh in steel + plastic:
+    for mesh in steel + plastic + worktop:
         mesh.apply_translation((-w / 2, -d / 2, 0.0))  # origin to floor center
-    return to_scene(steel, plastic)
+    return to_scene(steel, plastic, worktop)
 
 
 def build_sink(spec: BuildSpec) -> trimesh.Scene:
@@ -214,15 +242,17 @@ def build_sink(spec: BuildSpec) -> trimesh.Scene:
     for cx in centers:
         hole = parts.box_part(bw, bd, SLAB_T * 3, (cx, 0, top - SLAB_T / 2))
         slab = slab.difference(hole)
-    steel = [slab]
-    steel += [parts.basin(bw, bd, BASIN_DEPTH, top_z=top, center_x=cx) for cx in centers]
+    worktop = [slab]
+    steel = [parts.basin(bw, bd, BASIN_DEPTH, top_z=top, center_x=cx) for cx in centers]
     steel += parts.legs(w, d, height=top - SLAB_T)
     if drainer in ("left", "right"):
         sign = 1.0 if drainer == "right" else -1.0
         dx = sign * (w - drainer_w) / 2
-        steel.append(parts.drainer_board(drainer_w - 60, bd, top, center_x=dx, thickness=DRAINER_T))
+        worktop.append(
+            parts.drainer_board(drainer_w - 60, bd, top, center_x=dx, thickness=DRAINER_T)
+        )
     if has_splash:
         steel.append(parts.backsplash(w, BACKSPLASH_H, top, back_y=-d / 2))
     if spec.features.get("undershelf", False):
         steel.append(parts.undershelf(w, d))
-    return to_scene(steel)
+    return to_scene(steel, worktop=worktop)

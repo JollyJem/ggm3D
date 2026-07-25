@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 import trimesh
 
+from app.generator import parts
 from app.generator.parametric import (
     BACKSPLASH_H,
     BASIN_DEPTH,
@@ -82,6 +83,53 @@ def test_glb_exports_clean_and_under_1mb(builder, spec):
     reloaded = trimesh.load(io.BytesIO(glb), file_type="glb")
     assert reloaded.geometry
     assert all(m.faces.size > 0 for m in reloaded.geometry.values())
+
+
+# (metallicFactor, roughnessFactor) per material group
+EXPECTED_MATERIALS = {"steel": (1.0, 0.25), "worktop": (1.0, 0.35), "plastic": (0.0, 0.6)}
+
+
+@pytest.mark.parametrize(("builder", "spec"), CASES, ids=IDS)
+def test_material_presets_per_group(builder, spec):
+    scene = builder(spec)
+    for name, mesh in scene.geometry.items():
+        metallic, roughness = EXPECTED_MATERIALS[name]
+        material = mesh.visual.material
+        assert material.metallicFactor == pytest.approx(metallic), name
+        assert material.roughnessFactor == pytest.approx(roughness), name
+
+
+@pytest.mark.parametrize(("builder", "spec"), CASES, ids=IDS)
+def test_normals_are_per_face_not_averaged(builder, spec):
+    """Shared box vertices would average into corner normals and shade a cube
+    like a sphere; every vertex must carry its own face normal instead."""
+    for mesh in builder(spec).geometry.values():
+        expected = np.repeat(mesh.face_normals, 3, axis=0)
+        assert np.allclose(mesh.vertex_normals, expected, atol=1e-6)
+
+
+def test_worktops_and_drainers_get_the_rougher_preset():
+    # both the work table top and the sink worktop plus drainer ribs
+    assert "worktop" in build_work_table(WORK_TABLE).geometry
+    assert "worktop" in build_sink(DOUBLE_SINK).geometry
+
+
+def test_chamfer_keeps_the_bounding_box_and_stays_watertight():
+    box = parts.box_part(1200, 700, 40, (5, -3, 900))
+    cham = parts.chamfer_box(box)
+    # face planes are untouched, so the part still matches its spec dimensions
+    assert np.allclose(cham.bounds, box.bounds)
+    assert cham.is_watertight
+    assert cham.is_winding_consistent
+    assert cham.volume < box.volume  # material really was cut off the edges
+
+
+def test_chamfer_never_eats_a_thin_part():
+    thin = parts.box_part(8, 400, 4, (0, 0, 0))  # 4 mm rib, thinner than 2x chamfer
+    cham = parts.chamfer_box(thin)
+    assert np.allclose(cham.bounds, thin.bounds)
+    assert cham.is_watertight
+    assert cham.volume > 0
 
 
 def _col_heights(scene: trimesh.Scene, x_mm: float, y_mm: float = 0.0) -> np.ndarray:

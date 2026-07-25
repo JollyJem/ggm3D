@@ -8,7 +8,13 @@
   camera-controls
   auto-rotate
   poster="{{ product.image_url }}"
-  shadow-intensity="1">
+  {# fully metallic steel renders black without something to reflect: the studio
+     HDRI is what puts softbox highlights on the panels and edge chamfers #}
+  environment-image="/static/hdr/studio.hdr"
+  tone-mapping="neutral"
+  exposure="1.0"
+  shadow-intensity="1"
+  shadow-softness="0.8">
   <button slot="ar-button"
           class="absolute bottom-3 right-3 bg-orange-500 text-white font-semibold rounded-full px-5 py-3 min-h-[44px] shadow">
     View in your room

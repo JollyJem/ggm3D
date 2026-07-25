@@ -3,17 +3,97 @@
 Builders rotate to glTF Y-up and scale to meters once, on export.
 """
 
+import itertools
 import math
 
+import numpy as np
 import trimesh
 
 Vec3 = tuple[float, float, float]
+
+CHAMFER = 2.0  # mm, the bevel cut off each edge of a visible box part
 
 
 def box_part(width: float, depth: float, height: float, center: Vec3) -> trimesh.Trimesh:
     part = trimesh.creation.box(extents=(width, depth, height))
     part.apply_translation(center)
     return part
+
+
+def _chamfer_topology() -> np.ndarray:
+    """Triangles of the chamfered box, as indices into its 24 vertex slots.
+
+    Slot a * 8 + 4 * sx + 2 * sy + sz is the corner with signs (sx, sy, sz) of
+    the shrunken box that keeps its full extent on axis a. The shape is always
+    the same 26 facets: 6 shrunken faces, 12 edge bevels, 8 corner triangles.
+    Built once at import; chamfer_box only moves the vertices.
+    """
+    tris: list[tuple[int, int, int]] = []
+
+    def idx(axis: int, s: tuple[int, int, int]) -> int:
+        return axis * 8 + 4 * s[0] + 2 * s[1] + s[2]
+
+    def quad(a: int, b: int, c: int, d: int) -> None:
+        tris.extend([(a, b, c), (a, c, d)])
+
+    for axis in range(3):  # the six face rectangles
+        u, v = (i for i in range(3) if i != axis)
+        for s_axis in (0, 1):
+            ring = []
+            for su, sv in ((0, 0), (1, 0), (1, 1), (0, 1)):
+                s = [0, 0, 0]
+                s[axis], s[u], s[v] = s_axis, su, sv
+                ring.append(idx(axis, tuple(s)))
+            quad(*ring)
+
+    for a, b in ((0, 1), (0, 2), (1, 2)):  # the twelve edge bevels
+        other = 3 - a - b
+        for sa in (0, 1):
+            for sb in (0, 1):
+                ring = []
+                for group, order in ((a, (0, 1)), (b, (1, 0))):
+                    for sc in order:
+                        s = [0, 0, 0]
+                        s[a], s[b], s[other] = sa, sb, sc
+                        ring.append(idx(group, tuple(s)))
+                quad(*ring)
+
+    for corner in _SIGN_KEYS:  # the eight corner triangles
+        tris.append(tuple(idx(axis, corner) for axis in range(3)))
+    return np.array(tris, dtype=np.int64)
+
+
+_SIGN_KEYS = list(itertools.product((0, 1), repeat=3))
+_SIGNS = np.array(_SIGN_KEYS, dtype=float) * 2.0 - 1.0
+_CHAMFER_FACES = _chamfer_topology()
+
+
+def chamfer_box(part: trimesh.Trimesh, size: float = CHAMFER) -> trimesh.Trimesh:
+    """Cut a 45 degree bevel off every edge of an axis-aligned box.
+
+    Each face plane is left untouched and only the edges are cut back, so the
+    bounding box still matches the spec exactly. Real sheet steel has no
+    infinitely sharp edge, and the bevel catches a bright specular line that
+    reads as metal instead of a flat white panel.
+    """
+    low, high = part.bounds
+    center = (low + high) / 2.0
+    extents = high - low
+    size = min(size, float(extents.min()) / 3.0)  # never eat a thin part
+    corners = []
+    for axis in range(3):
+        half = extents / 2.0 - size
+        half[axis] = extents[axis] / 2.0
+        corners.append(center + _SIGNS * half)
+    verts = np.vstack(corners)
+    # the shape is convex around `center`, so a triangle is wound correctly when
+    # its normal points away from the center. Cheaper and surer than a repair pass.
+    faces = _CHAMFER_FACES.copy()
+    tri = verts[faces]
+    normals = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
+    inward = ((tri[:, 0] - center) * normals).sum(axis=1) < 0
+    faces[inward] = faces[inward][:, ::-1]
+    return trimesh.Trimesh(vertices=verts, faces=faces, process=False)
 
 
 def box_from_bounds(
@@ -46,7 +126,7 @@ def cylinder_part(
 def top_slab(
     width: float, depth: float, top_z: float, thickness: float = 40.0
 ) -> trimesh.Trimesh:
-    return box_part(width, depth, thickness, (0, 0, top_z - thickness / 2))
+    return chamfer_box(box_part(width, depth, thickness, (0, 0, top_z - thickness / 2)))
 
 
 def leg_centers(
@@ -67,7 +147,7 @@ def legs(
     bottom_z: float = 0.0,
 ) -> list[trimesh.Trimesh]:
     return [
-        box_part(side, side, height, (x, y, bottom_z + height / 2))
+        chamfer_box(box_part(side, side, height, (x, y, bottom_z + height / 2)))
         for x, y in leg_centers(width, depth, side, inset)
     ]
 
@@ -159,7 +239,7 @@ def undershelf(
 ) -> trimesh.Trimesh:
     lx = width / 2 - inset - leg_side / 2
     ly = depth / 2 - inset - leg_side / 2
-    return box_part(2 * lx - leg_side, 2 * ly - leg_side, thickness, (0, 0, z))
+    return chamfer_box(box_part(2 * lx - leg_side, 2 * ly - leg_side, thickness, (0, 0, z)))
 
 
 def door_panel(
@@ -241,11 +321,14 @@ def lipped_shelf(
     """Flat sheet with four short downturned edges: a folded-metal lower shelf."""
     z0 = top_z - lip
     return [
-        box_from_bounds(x0, x1, y0, y1, top_z - sheet, top_z),
-        box_from_bounds(x0, x1, y0, y0 + edge_t, z0, top_z),
-        box_from_bounds(x0, x1, y1 - edge_t, y1, z0, top_z),
-        box_from_bounds(x0, x0 + edge_t, y0, y1, z0, top_z),
-        box_from_bounds(x1 - edge_t, x1, y0, y1, z0, top_z),
+        chamfer_box(panel)
+        for panel in (
+            box_from_bounds(x0, x1, y0, y1, top_z - sheet, top_z),
+            box_from_bounds(x0, x1, y0, y0 + edge_t, z0, top_z),
+            box_from_bounds(x0, x1, y1 - edge_t, y1, z0, top_z),
+            box_from_bounds(x0, x0 + edge_t, y0, y1, z0, top_z),
+            box_from_bounds(x1 - edge_t, x1, y0, y1, z0, top_z),
+        )
     ]
 
 
