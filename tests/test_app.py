@@ -40,15 +40,20 @@ def test_product_detail_links_to_the_ggm_catalog_page():
     sink = next(p for p in SEED_PRODUCTS if p["category"] == "sink")
     resp = client.get(f"/products/{sink['id']}")
     assert f'href="{sink["product_url"]}"' in resp.text
+    assert "Product Link:" in resp.text
     assert 'target="_blank"' in resp.text
     assert 'rel="noopener noreferrer"' in resp.text
+    # sits under the viewer, above the description
+    body = resp.text
+    assert body.index('id="model-area"') < body.index("Product Link:")
+    assert body.index("Product Link:") < body.index(sink["description"])
 
 
 def test_product_detail_omits_link_when_absent():
     table = next(p for p in SEED_PRODUCTS if p["category"] == "work_table")
     assert "product_url" not in table  # no public link recorded for this one
     resp = client.get(f"/products/{table['id']}")
-    assert "View on ggmgastro.com" not in resp.text
+    assert "Product Link:" not in resp.text
 
 
 def test_unknown_product_returns_404():
