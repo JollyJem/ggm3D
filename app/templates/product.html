@@ -17,11 +17,13 @@
   {% endif %}
 </div>
 
-{% if product.source_url %}
-<a href="{{ product.source_url }}" target="_blank" rel="noopener noreferrer"
-   class="inline-flex items-center gap-2 min-h-[44px] text-sm text-orange-400 hover:text-orange-300 underline underline-offset-4">
-  View product on GGM Gastro &rarr;
-</a>
+{% if product.product_url %}
+<p class="mt-2 text-xs text-gray-500 leading-snug">
+  Product Link:
+  <!-- break-all keeps the long URL inside the viewport at 390 px -->
+  <a href="{{ product.product_url }}" target="_blank" rel="noopener noreferrer"
+     class="text-orange-600 hover:text-orange-700 hover:underline break-all">{{ product.product_url }}</a>
+</p>
 {% endif %}
 
 <p class="mt-4 text-gray-700">{{ product.description }}</p>
