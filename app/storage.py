@@ -19,19 +19,29 @@ logger = logging.getLogger(__name__)
 MODELS_DIR = Path(__file__).resolve().parent / "static" / "models"
 BUCKET = "models"
 
+# A page load asks for the GLB and the USDZ, and the status partial polls both
+# every 2 s while a build runs. That is the same one row every time, so holding
+# it briefly turns a burst of Supabase round trips into one. Short enough that
+# a model finishing still shows up on the next poll.
+ROW_TTL_SECONDS = 1.5
+_row_cache: dict[str, tuple[float, dict | None]] = {}
+
 
 def save_model(product_id: str, glb_bytes: bytes, spec: SpecResult) -> str:
-    if db.MODE == "supabase" and db.get_client() is not None:
-        return _save_supabase(product_id, glb_bytes, spec)
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
-    (MODELS_DIR / f"{product_id}.glb").write_bytes(glb_bytes)
-    (MODELS_DIR / f"{product_id}.spec.json").write_text(
-        spec.model_dump_json(indent=2), encoding="utf-8"
-    )
-    # the old USDZ no longer matches the new GLB; drop it so the viewer
-    # omits ios-src instead of sending iPhones an outdated model
-    (MODELS_DIR / f"{product_id}.usdz").unlink(missing_ok=True)
-    return get_model_url(product_id) or ""
+    try:
+        if db.MODE == "supabase" and db.get_client() is not None:
+            return _save_supabase(product_id, glb_bytes, spec)
+        MODELS_DIR.mkdir(parents=True, exist_ok=True)
+        (MODELS_DIR / f"{product_id}.glb").write_bytes(glb_bytes)
+        (MODELS_DIR / f"{product_id}.spec.json").write_text(
+            spec.model_dump_json(indent=2), encoding="utf-8"
+        )
+        # the old USDZ no longer matches the new GLB; drop it so the viewer
+        # omits ios-src instead of sending iPhones an outdated model
+        (MODELS_DIR / f"{product_id}.usdz").unlink(missing_ok=True)
+        return get_model_url(product_id) or ""
+    finally:
+        _invalidate(product_id)
 
 
 def load_cached_spec(product_id: str) -> SpecResult | None:
@@ -77,26 +87,29 @@ def get_usdz_url(product_id: str) -> str | None:
 
 def save_usdz(product_id: str, usdz_bytes: bytes) -> str:
     """Store a USDZ next to the product's GLB and record it in models.usdz_url."""
-    if db.MODE == "supabase" and db.get_client() is not None:
-        client = db.get_client()
-        path = f"{product_id}.usdz"
-        client.storage.from_(BUCKET).upload(
-            path,
-            usdz_bytes,
-            file_options={"content-type": "model/vnd.usdz+zip", "upsert": "true"},
-        )
-        public_url = client.storage.from_(BUCKET).get_public_url(path).rstrip("?")
-        usdz_url = f"{public_url}?v={int(time.time())}"
-        client.table("models").update(
-            {
-                "usdz_url": usdz_url,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }
-        ).eq("product_id", product_id).execute()
-        return usdz_url
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
-    (MODELS_DIR / f"{product_id}.usdz").write_bytes(usdz_bytes)
-    return get_usdz_url(product_id) or ""
+    try:
+        if db.MODE == "supabase" and db.get_client() is not None:
+            client = db.get_client()
+            path = f"{product_id}.usdz"
+            client.storage.from_(BUCKET).upload(
+                path,
+                usdz_bytes,
+                file_options={"content-type": "model/vnd.usdz+zip", "upsert": "true"},
+            )
+            public_url = client.storage.from_(BUCKET).get_public_url(path).rstrip("?")
+            usdz_url = f"{public_url}?v={int(time.time())}"
+            client.table("models").update(
+                {
+                    "usdz_url": usdz_url,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }
+            ).eq("product_id", product_id).execute()
+            return usdz_url
+        MODELS_DIR.mkdir(parents=True, exist_ok=True)
+        (MODELS_DIR / f"{product_id}.usdz").write_bytes(usdz_bytes)
+        return get_usdz_url(product_id) or ""
+    finally:
+        _invalidate(product_id)
 
 
 def _save_supabase(product_id: str, glb_bytes: bytes, spec: SpecResult) -> str:
@@ -129,6 +142,9 @@ def _save_supabase(product_id: str, glb_bytes: bytes, spec: SpecResult) -> str:
 
 
 def _fetch_model_row(product_id: str) -> dict | None:
+    cached = _row_cache.get(product_id)
+    if cached is not None and time.monotonic() - cached[0] < ROW_TTL_SECONDS:
+        return cached[1]
     client = db.get_client()
     if client is None:
         return None
@@ -142,5 +158,12 @@ def _fetch_model_row(product_id: str) -> dict | None:
         )
     except Exception:
         logger.exception("Supabase read failed, falling back to local files")
-        return None
-    return rows[0] if rows else None
+        return None  # deliberately not cached: retry the next call
+    row = rows[0] if rows else None
+    _row_cache[product_id] = (time.monotonic(), row)
+    return row
+
+
+def _invalidate(product_id: str) -> None:
+    """Drop the cached row so the just-written URL is visible immediately."""
+    _row_cache.pop(product_id, None)
