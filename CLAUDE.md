@@ -21,7 +21,7 @@ Hybrid generation:
 ## Stack
 
 - Python 3.12, FastAPI, Uvicorn
-- Jinja2, HTMX, Tailwind CSS via CDN (no node build), model-viewer web component
+- Jinja2, HTMX, hand-written Tailwind-style CSS in app/static/css/app.css (no node build), model-viewer web component
 - trimesh + manifold3d for parametric meshes
 - google-genai SDK, model gemini-2.5-flash. Never use the deprecated google-generativeai package.
 - supabase-py for auth, Postgres, and Storage
@@ -122,8 +122,11 @@ class BuildSpec(BaseModel):
 ## Frontend
 
 - Pages: / catalog grid, /products/{id} detail with viewer and Generate button.
-- Load HTMX and model-viewer from CDN, like Tailwind. No build step.
+- Load HTMX and model-viewer from CDN. No build step. Both are scoped to the product page via the `head_scripts` block — the catalog ships zero JavaScript and must stay that way.
+- Styles are a static file, not the Tailwind CDN compiler. Class names are real Tailwind v3 utilities; a new one in a template needs the matching rule added to app/static/css/app.css. A test fails if the two drift apart.
 - model-viewer attributes: src, ar, ar-modes="scene-viewer webxr", ar-scale="fixed", camera-controls, auto-rotate, poster with the product photo.
+- Never put a ?v= cache-buster on environment-image. model-viewer selects the Radiance loader with /\.hdr(\.js)?$/ over the whole URL, so a query string silently falls back to the image loader and the steel renders black.
+- Run `python scripts/optimize_assets.py` after dropping in a new HDRI or product photo. Phones pay for every byte here.
 - Auth stays light. Catalog, viewer, and AR are public. Generate requires login with a single Supabase email and password account. Interviewers never create accounts.
 
 ## Deploy (Render)
