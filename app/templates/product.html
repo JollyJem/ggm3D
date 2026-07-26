@@ -1,5 +1,21 @@
 {% extends "base.html" %}
 {% block title %}{{ product.name }} — GGM 3D Configurator{% endblock %}
+
+{% block head_scripts %}
+  {# one round trip's worth of DNS + TLS to unpkg, started before the parser
+     reaches the scripts below. Worth ~0.5 s on a cold mobile connection. #}
+  <link rel="preconnect" href="https://unpkg.com" crossorigin>
+  {% if model_origin %}
+  {# the GLB lives in the Supabase bucket, a third origin. Opening it now means
+     model-viewer is not waiting on a TLS handshake the moment it is ready. #}
+  <link rel="preconnect" href="{{ model_origin }}" crossorigin>
+  {% endif %}
+  {# the full dist path on purpose: bare /htmx.org@1.9.12 makes unpkg answer
+     with a 302 to this file, and that extra round trip is pure latency #}
+  <script defer src="https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js"></script>
+  <script type="module" src="https://unpkg.com/@google/model-viewer@3.5.0/dist/model-viewer.min.js"></script>
+{% endblock %}
+
 {% block content %}
 <a href="/" class="inline-flex items-center min-h-[44px] text-sm text-gray-500 hover:text-gray-900">&larr; Back to catalog</a>
 

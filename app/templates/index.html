@@ -15,7 +15,12 @@
   <a href="/products/{{ p.id }}"
      class="block bg-white rounded-xl shadow-sm hover:shadow-md transition p-4 min-h-[44px]">
     <div class="aspect-[4/3] bg-gray-100 rounded-lg mb-3 overflow-hidden flex items-center justify-center">
+      {# width/height reserve the box before the bytes arrive, so the grid does
+         not jump as photos land. Only the first card is above the fold on a
+         390 px phone; the rest wait until they are scrolled towards. #}
       <img src="{{ p.image_url }}" alt="{{ p.name }}"
+           width="800" height="800" decoding="async"
+           {% if loop.first %}fetchpriority="high"{% else %}loading="lazy"{% endif %}
            class="object-contain w-full h-full"
            onerror="this.style.display='none'; this.parentElement.textContent='📦';">
     </div>

@@ -1,4 +1,5 @@
 <model-viewer
+  id="product-viewer"
   src="{{ glb_url }}"
   {% if usdz_url %}ios-src="{{ usdz_url }}"{% endif %}
   alt="3D model of {{ product.name }}"
@@ -9,17 +10,55 @@
   auto-rotate
   poster="{{ product.image_url }}"
   {# fully metallic steel renders black without something to reflect: the studio
-     HDRI is what puts softbox highlights on the panels and edge chamfers #}
+     HDRI is what puts softbox highlights on the panels and edge chamfers.
+
+     Do NOT add a ?v= cache-buster here. model-viewer picks the Radiance loader
+     with /\.hdr(\.js)?$/ against the whole URL, so "studio.hdr?v=1" misses and
+     the file is handed to the image loader instead. It fails silently: no
+     environment, and the steel goes black. The file gets max-age=3600 rather
+     than immutable, which is the cheaper side of that trade. #}
   environment-image="/static/hdr/studio.hdr"
   tone-mapping="neutral"
   exposure="1.0"
   shadow-intensity="1"
-  shadow-softness="0.8">
+  shadow-softness="0.8"
+  {# the animated finger hint keeps the render loop awake for no benefit on a
+     touch screen, where dragging the model is the obvious thing to try #}
+  interaction-prompt="none">
   <button slot="ar-button"
           class="absolute bottom-3 right-3 bg-orange-500 text-white font-semibold rounded-full px-5 py-3 min-h-[44px] shadow">
     View in your room
   </button>
 </model-viewer>
+<script>
+  /* auto-rotate never stops on its own: it renders frames for as long as the
+     page is open, which on a phone means the GPU stays busy and the battery
+     drains while the model just spins. Let it turn once so the interviewer sees
+     every side, then park it. model-viewer stops drawing once nothing moves, so
+     the idle cost after this is zero until the user drags. */
+  (function () {
+    var viewer = document.getElementById('product-viewer');
+    if (!viewer) return;
+
+    var ROTATION_MS = 15000; // 3 s start delay + one 12 s turn at the default speed
+
+    function park() {
+      viewer.removeAttribute('auto-rotate');
+      viewer.removeEventListener('camera-change', onCameraChange);
+    }
+
+    function onCameraChange(event) {
+      // the moment the user takes the camera, they are driving, not the demo
+      if (event.detail && event.detail.source === 'user-interaction') park();
+    }
+
+    viewer.addEventListener('camera-change', onCameraChange);
+    // time the turn from when the model is actually on screen, not from parse
+    viewer.addEventListener('load', function () {
+      setTimeout(park, ROTATION_MS);
+    }, { once: true });
+  })();
+</script>
 {% if is_sample %}
 <p class="text-sm text-gray-400 mt-2">Sample model — tap Generate to build this product at its real dimensions.</p>
 {% endif %}

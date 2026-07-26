@@ -6,12 +6,17 @@
   <!-- opt out of Chrome Auto Dark Mode so the demo renders identically on phones in dark mode -->
   <meta name="color-scheme" content="only light">
   <title>{% block title %}GGM 3D Configurator{% endblock %}</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
-  <script type="module" src="https://unpkg.com/@google/model-viewer@3.5.0/dist/model-viewer.min.js"></script>
+  <link rel="stylesheet" href="/static/css/app.css?v={{ asset_version }}">
+  {# Scripts are opt-in per page. model-viewer carries three.js and is by far the
+     heaviest thing here, and the catalog, login and 404 pages render fine
+     without a line of JavaScript — so only the product page pulls it in. #}
+  {% block head_scripts %}{% endblock %}
   <style>
     :root { color-scheme: only light; }
-    model-viewer { width: 100%; height: 45vh; min-height: 320px; background: #f3f4f6; border-radius: 0.75rem; }
+    model-viewer {
+      width: 100%; height: 45vh; min-height: 320px;
+      background: #f3f4f6; border-radius: 0.75rem;
+    }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-900 min-h-screen">
