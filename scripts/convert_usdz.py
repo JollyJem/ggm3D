@@ -26,7 +26,12 @@ and matches the printed dimensions.
 
 Usage:
     python scripts/convert_usdz.py                 # all products with a ready GLB
+    python scripts/convert_usdz.py --product 7     # just this one, by seed position
     python scripts/convert_usdz.py --blender "C:/Program Files/Blender Foundation/Blender 4.1/blender.exe"
+
+Regenerating one product's GLB is the common case, and Blender start-up
+dominates the runtime, so --product takes the trailing digits of a seed id:
+"7" matches 0b6f9c1a-...-000000000007. A full uuid works too.
 """
 
 import argparse
@@ -95,13 +100,25 @@ def convert(blender: str, glb_bytes: bytes) -> bytes:
         return dst.read_bytes()
 
 
+def select(raws: list[dict], wanted: str | None) -> list[dict]:
+    """Seed rows matching --product, which is a full uuid or its trailing digits."""
+    if not wanted:
+        return raws
+    key = wanted.strip()
+    chosen = [r for r in raws if r["id"].endswith(key)]
+    if not chosen:
+        sys.exit(f"No seed product matches {wanted!r}")
+    return chosen
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--blender", help="path to blender.exe if not on PATH")
+    parser.add_argument("--product", help="seed id, or just its trailing digits")
     args = parser.parse_args()
     blender = find_blender(args.blender)
     print(f"Using {blender}")
-    for raw in SEED_PRODUCTS:
+    for raw in select(SEED_PRODUCTS, args.product):
         product = Product(**raw)
         glb = fetch_glb(product.id)
         if glb is None:
