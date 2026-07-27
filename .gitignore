@@ -9,3 +9,5 @@ app/static/models/*
 !app/static/models/sample.glb
 # raw TripoSR output (watched folder for pregenerate_ai_meshes.py)
 scripts/ai_raw/
+# adb logcat capture from the on-device debugging steps in CLAUDE.md
+freeze.txt
