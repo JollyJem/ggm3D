@@ -10,11 +10,13 @@
   auto-rotate
   {# the viewer sits at the top of the page so lazy is close to eager here, but
      it is the honest declaration: nothing downloads until the element matters.
-     reveal="interaction" is the load-bearing one — the GLB, the HDRI and the
-     WebGL context are all deferred until the interviewer taps the poster, so
-     opening a product page costs a JPEG and nothing else. #}
+
+     Deliberately NOT reveal="interaction". This partial is what HTMX swaps in
+     the moment Generate finishes, and a poster waiting for a tap at exactly
+     that moment reads as "the build failed" — the one misreading a live demo
+     cannot afford. The visibilitychange pause below is what actually addresses
+     the AR handoff; deferring the load only hid it. #}
   loading="lazy"
-  reveal="interaction"
   poster="{{ product.image_url }}"
   {# fully metallic steel renders black without something to reflect: the studio
      HDRI is what puts softbox highlights on the panels and edge chamfers.
