@@ -106,9 +106,13 @@ def box_from_bounds(
 
 
 def round_bar_x(
-    x0: float, x1: float, y: float, z: float, radius: float, sections: int = 16
+    x0: float, x1: float, y: float, z: float, radius: float, sections: int = 12
 ) -> trimesh.Trimesh:
-    """Round tube running along X (front cross rail), centered at (·, y, z)."""
+    """Round tube running along X (front cross rail), centered at (·, y, z).
+
+    12 sections: a 30 mm rail seen from two metres is four pixels wide, and an
+    even count keeps a vertex on each axis so the bounding box stays exact.
+    """
     bar = trimesh.creation.cylinder(radius=radius, height=x1 - x0, sections=sections)
     bar.apply_transform(trimesh.transformations.rotation_matrix(math.pi / 2, [0, 1, 0]))
     bar.apply_translation(((x0 + x1) / 2, y, z))
@@ -116,8 +120,10 @@ def round_bar_x(
 
 
 def cylinder_part(
-    radius: float, height: float, center: Vec3, sections: int = 32
+    radius: float, height: float, center: Vec3, sections: int = 16
 ) -> trimesh.Trimesh:
+    """Upright cylinder. Only ever a foot or a leg here, all under 50 mm across,
+    so 16 sections is already past the point where more shows on a phone."""
     part = trimesh.creation.cylinder(radius=radius, height=height, sections=sections)
     part.apply_translation(center)
     return part
@@ -199,7 +205,7 @@ def cabinet_walls(
 
 def caster_wheel(radius: float, width: float, center: Vec3) -> trimesh.Trimesh:
     """Caster wheel disc, axle along the y axis; center is the axle center."""
-    wheel = trimesh.creation.cylinder(radius=radius, height=width, sections=24)
+    wheel = trimesh.creation.cylinder(radius=radius, height=width, sections=16)
     wheel.apply_transform(trimesh.transformations.rotation_matrix(math.pi / 2, [1, 0, 0]))
     wheel.apply_translation(center)
     return wheel
