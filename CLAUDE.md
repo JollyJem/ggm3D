@@ -126,10 +126,12 @@ class BuildSpec(BaseModel):
 - Pages: / catalog grid, /products/{id} detail with viewer and Generate button.
 - Load HTMX and model-viewer from CDN. No build step. Both are scoped to the product page via the `head_scripts` block — the catalog ships zero JavaScript and must stay that way.
 - Styles are a static file, not the Tailwind CDN compiler. Class names are real Tailwind v3 utilities; a new one in a template needs the matching rule added to app/static/css/app.css. A test fails if the two drift apart.
-- model-viewer attributes: src, ar, ar-modes="scene-viewer webxr", ar-scale="fixed", camera-controls, auto-rotate, poster with the product photo.
+- model-viewer attributes: src, ios-src when a USDZ exists, ar, ar-modes="scene-viewer webxr quick-look", ar-scale="fixed", camera-controls, loading="lazy", poster with the product photo. auto-rotate is set in markup but parked immediately on screens under 640 px, on first user interaction, and whenever the page is hidden — a spinning model keeps the GPU busy, and it has to be handed to ARCore intact.
 - Never put a ?v= cache-buster on environment-image. model-viewer selects the Radiance loader with /\.hdr(\.js)?$/ over the whole URL, so a query string silently falls back to the image loader and the steel renders black.
 - Run `python scripts/optimize_assets.py` after dropping in a new HDRI or product photo. Phones pay for every byte here.
 - `python scripts/inspect_glb.py <path|url>` reports the numbers Scene Viewer cares about: triangles, nodes, materials, NaN/inf coordinates, degenerate faces, bounding box. Run it on any GLB before blaming the phone.
+- No `reveal="interaction"`. The viewer partial is what HTMX swaps in when Generate finishes, and a poster waiting for a tap right then reads as a failed build.
+- Auth stays light. Catalog, viewer, and AR are public. Generate requires login with a single Supabase email and password account. Interviewers never create accounts.
 
 ## Scene Viewer
 
@@ -139,7 +141,29 @@ Android Scene Viewer is stricter than model-viewer and gets no console. A model 
 - One mesh per material, so a product exports as at most three nodes however many boxes went into it. Scene Viewer pays per node.
 - Budget: under 60k triangles and 500 KB. Products land near 1k triangles, and tests/test_builders.py holds a 4k tripwire so a regression is caught long before the ceiling.
 - model-viewer copies the query string off `src` into the Scene Viewer intent, so the `?v=` cache-buster on a Supabase GLB URL arrives as a stray Scene Viewer launch parameter. Harmless today because `v` is not a parameter it defines — but never name a cache-buster `mode`, `title`, `link`, `sound`, `resizable`, or `disable_occlusion`.
-- Auth stays light. Catalog, viewer, and AR are public. Generate requires login with a single Supabase email and password account. Interviewers never create accounts.
+
+## Debugging the phone over USB
+
+The A71 froze once on AR and the cause was guessed at, not read. Wire up the cable *before* trying to reproduce it — a hard freeze takes the console with it unless something on the desktop is already writing to disk.
+
+Enable USB debugging on the A71 (Android 13, One UI 5):
+
+1. Settings → About phone → Software information → tap **Build number** seven times → enter the PIN → "Developer mode has been enabled".
+2. Settings → Developer options → turn on **USB debugging**.
+3. Plug the phone into the desktop. On the USB notification pick **File transfer / Android Auto**; charging-only mode sometimes hides the device.
+4. The phone shows "Allow USB debugging?" with the desktop's RSA fingerprint. Tick **Always allow from this computer** → Allow. This prompt reappears after every OS update.
+
+Attach DevTools:
+
+5. Desktop Chrome → `chrome://inspect/#devices` → tick **Discover USB devices**.
+6. Open the product page in Chrome *on the phone*. It appears under the device name.
+7. Click **inspect** next to it. The Console and Network tabs are the real page's, live.
+
+What this does and does not reach:
+
+- It reaches the page: model-viewer's own logs, the GLB and HDRI requests, WebGL errors. On an AR failure model-viewer logs `Attempting to present in AR with Scene Viewer` and then `Error while trying to present in AR with Scene Viewer` before falling through to the next `ar-mode` — that pair tells you whether the handoff even started.
+- It does **not** reach Scene Viewer. That is a separate native app (`com.google.android.googlequicksearchbox`), not a web view, so nothing inside it shows up in DevTools. For that you need `adb logcat`.
+- A DevTools console buffer dies with the device. To survive a freeze, stream to the desktop instead: install Android platform-tools (`winget install Google.PlatformTools`), then `adb logcat > freeze.txt` in a terminal that stays open while you reproduce. Filter afterwards for `ARCore`, `SceneViewer`, `Adreno`, or `libGLESv2`.
 
 ## Deploy (Render)
 
