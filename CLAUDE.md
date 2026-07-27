@@ -51,11 +51,13 @@ app/
     parts.py       reusable part functions
     parametric.py  product builders returning a trimesh.Scene
     materials.py   PBR material presets
+    sanitize.py    mesh repair run on every scene before export
   templates/       Jinja pages and HTMX partials
   static/
 scripts/
   seed_products.py
   pregenerate_ai_meshes.py
+  inspect_glb.py
 supabase/
   schema.sql       tables and RLS policies, run by hand in the SQL editor
 tests/
@@ -127,6 +129,16 @@ class BuildSpec(BaseModel):
 - model-viewer attributes: src, ar, ar-modes="scene-viewer webxr", ar-scale="fixed", camera-controls, auto-rotate, poster with the product photo.
 - Never put a ?v= cache-buster on environment-image. model-viewer selects the Radiance loader with /\.hdr(\.js)?$/ over the whole URL, so a query string silently falls back to the image loader and the steel renders black.
 - Run `python scripts/optimize_assets.py` after dropping in a new HDRI or product photo. Phones pay for every byte here.
+- `python scripts/inspect_glb.py <path|url>` reports the numbers Scene Viewer cares about: triangles, nodes, materials, NaN/inf coordinates, degenerate faces, bounding box. Run it on any GLB before blaming the phone.
+
+## Scene Viewer
+
+Android Scene Viewer is stricter than model-viewer and gets no console. A model that renders in Chrome can still fail there, so the export path is defensive:
+
+- `sanitize_scene` runs on every scene before shading: drops faces on NaN/inf vertices, welds duplicates, removes degenerate and duplicate faces, re-winds an inverted shell. scipy and networkx are not installed, so `trimesh.repair.fix_winding` / `fix_normals` / `convex_hull` raise at call time — sanitize.py is numpy only and must stay that way.
+- One mesh per material, so a product exports as at most three nodes however many boxes went into it. Scene Viewer pays per node.
+- Budget: under 60k triangles and 500 KB. Products land near 1k triangles, and tests/test_builders.py holds a 4k tripwire so a regression is caught long before the ceiling.
+- model-viewer copies the query string off `src` into the Scene Viewer intent, so the `?v=` cache-buster on a Supabase GLB URL arrives as a stray Scene Viewer launch parameter. Harmless today because `v` is not a parameter it defines — but never name a cache-buster `mode`, `title`, `link`, `sound`, `resizable`, or `disable_occlusion`.
 - Auth stays light. Catalog, viewer, and AR are public. Generate requires login with a single Supabase email and password account. Interviewers never create accounts.
 
 ## Deploy (Render)

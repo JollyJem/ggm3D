@@ -15,7 +15,9 @@ from app.generator.parametric import (
     build_sink,
     build_work_table,
 )
+from app.generator.sanitize import sanitize_mesh
 from app.schemas import BuildSpec
+from scripts.inspect_glb import mesh_stats
 
 TOL = 0.001  # 1 mm, in meters
 
@@ -239,6 +241,98 @@ def test_double_sink_backsplash_at_rear():
     assert _top_hit_y(scene, 0.0, y_mm=y_rear) == pytest.approx(
         DOUBLE_SINK.height_mm * 0.001, abs=TOL
     )
+
+
+# --- Scene Viewer budget -----------------------------------------------------
+# Android Scene Viewer is the tightest consumer of these files and far less
+# forgiving than model-viewer: it is the one that has to open the GLB on a
+# mid-range phone while ARCore already owns the camera and the GPU. These two
+# are the platform ceilings, not the current cost.
+AR_TRIANGLE_CEILING = 60_000
+AR_BYTE_CEILING = 500_000
+# The tripwire. Every builder today lands under 1.5k triangles, so anything
+# past this is a geometry bug long before it is a Scene Viewer problem — a
+# primitive that quietly went back to 32 sections, or a part built per-rib
+# instead of merged. Catching that here is the point; the ceilings above would
+# never fire.
+TRIANGLE_TRIPWIRE = 4_000
+
+
+def _exported_stats(builder, spec) -> tuple[list[dict], int]:
+    """Per-mesh stats of the real exported GLB, read back the way a viewer
+    reads it. Uses the same helpers as scripts/inspect_glb.py so the numbers in
+    a report and the numbers in this test cannot drift apart."""
+    glb = builder(spec).export(file_type="glb")
+    scene = trimesh.load(io.BytesIO(glb), file_type="glb", process=False)
+    return [mesh_stats(mesh) for mesh in scene.geometry.values()], len(glb)
+
+
+def test_double_sink_fits_the_scene_viewer_budget():
+    """Product 7 is the heaviest product: 2 m wide, two basins cut out of the
+    worktop with booleans, a ribbed drainer, legs, feet and a backsplash."""
+    stats, size = _exported_stats(build_sink, DOUBLE_SINK)
+    triangles = sum(row["triangles"] for row in stats)
+    assert triangles < AR_TRIANGLE_CEILING
+    assert triangles < TRIANGLE_TRIPWIRE
+    assert size < AR_BYTE_CEILING
+    assert size < 1_000_000
+
+
+@pytest.mark.parametrize(("builder", "spec"), CASES, ids=IDS)
+def test_no_non_finite_or_degenerate_geometry(builder, spec):
+    """A NaN coordinate or a zero-area sliver is what actually stops Scene
+    Viewer, and neither shows up in Chrome. sanitize_scene runs on every export
+    precisely so these stay at zero."""
+    stats, _ = _exported_stats(builder, spec)
+    assert stats, "builder exported no geometry"
+    for row in stats:
+        assert row["non_finite_vertices"] == 0
+        assert row["degenerate_faces"] == 0
+
+
+@pytest.mark.parametrize(("builder", "spec"), CASES, ids=IDS)
+def test_triangle_count_stays_under_the_tripwire(builder, spec):
+    stats, _ = _exported_stats(builder, spec)
+    assert sum(row["triangles"] for row in stats) < TRIANGLE_TRIPWIRE
+
+
+@pytest.mark.parametrize(("builder", "spec"), CASES, ids=IDS)
+def test_one_node_per_material_not_one_per_part(builder, spec):
+    """Scene Viewer pays per node. Every part sharing a material is merged into
+    a single mesh before export, so a product is at most three nodes however
+    many boxes went into it."""
+    scene = builder(spec)
+    assert len(scene.geometry) <= 3
+    assert set(scene.geometry) <= {"steel", "worktop", "plastic"}
+
+
+def test_sanitize_removes_nan_slivers_and_inverted_winding():
+    """The exports come out clean, so prove the sanitizer is what does it by
+    handing it geometry that is deliberately broken in all three ways."""
+    box = parts.box_part(100, 100, 100, (0, 0, 50))
+    verts = np.vstack([box.vertices, [[np.nan, 0, 0], [0, 0, 0], [1, 0, 0]]])
+    n = len(box.vertices)
+    faces = np.vstack([
+        box.faces,
+        [n, n + 1, n + 2],  # face on a NaN vertex
+        [0, 0, 1],  # zero-area sliver
+        box.faces[0],  # exact duplicate of an existing face
+    ])
+    dirty = trimesh.Trimesh(vertices=verts, faces=faces, process=False)
+    dirty.invert()  # whole shell wound inside out
+
+    assert sanitize_mesh(dirty, "dirty") is True
+    assert np.isfinite(dirty.vertices).all()
+    assert len(dirty.faces) == len(box.faces)
+    assert dirty.is_watertight
+    assert dirty.volume > 0  # re-wound outward
+
+
+def test_sanitize_leaves_a_clean_mesh_alone():
+    clean = parts.box_part(100, 100, 100, (0, 0, 50))
+    before = clean.faces.copy()
+    assert sanitize_mesh(clean, "clean") is False
+    assert np.array_equal(clean.faces, before)
 
 
 def test_single_basin_sink_unchanged():
