@@ -8,6 +8,13 @@
   ar-scale="fixed"
   camera-controls
   auto-rotate
+  {# the viewer sits at the top of the page so lazy is close to eager here, but
+     it is the honest declaration: nothing downloads until the element matters.
+     reveal="interaction" is the load-bearing one — the GLB, the HDRI and the
+     WebGL context are all deferred until the interviewer taps the poster, so
+     opening a product page costs a JPEG and nothing else. #}
+  loading="lazy"
+  reveal="interaction"
   poster="{{ product.image_url }}"
   {# fully metallic steel renders black without something to reflect: the studio
      HDRI is what puts softbox highlights on the panels and edge chamfers.
@@ -52,11 +59,30 @@
       if (event.detail && event.detail.source === 'user-interaction') park();
     }
 
-    viewer.addEventListener('camera-change', onCameraChange);
-    // time the turn from when the model is actually on screen, not from parse
-    viewer.addEventListener('load', function () {
-      setTimeout(park, ROTATION_MS);
-    }, { once: true });
+    /* Phones never get the spin. The demo phone is the one device where a
+       permanently busy GPU costs something — it is also the one that has to
+       hand a working GPU over to Scene Viewer a few seconds later — and on a
+       390 px screen a thumb is already on the model. Desktop keeps the turn,
+       where it reads as polish and the GPU is idle anyway. */
+    if (window.matchMedia('(max-width: 640px)').matches) {
+      park();
+    } else {
+      viewer.addEventListener('camera-change', onCameraChange);
+      // time the turn from when the model is actually on screen, not from parse
+      viewer.addEventListener('load', function () {
+        setTimeout(park, ROTATION_MS);
+      }, { once: true });
+    }
+
+    /* Tapping "View in your room" backgrounds this tab and starts ARCore.
+       model-viewer 3.5 does not watch document visibility — only its
+       interaction prompt does, and that is off — so without this the WebGL
+       loop is still drawing an HDRI-lit metal scene while Scene Viewer brings
+       up the camera and its own renderer. Park the rotation before handing the
+       GPU over; there is nothing to see behind Scene Viewer anyway. */
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'hidden') park();
+    });
   })();
 </script>
 {% if is_sample %}
