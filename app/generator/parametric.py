@@ -13,6 +13,7 @@ from app.generator.materials import (
     stainless,
     stainless_worktop,
 )
+from app.generator.sanitize import sanitize_scene
 from app.schemas import BuildSpec
 
 SLAB_T = 40.0
@@ -69,20 +70,27 @@ def to_scene(
     """
     rot = trimesh.transformations.rotation_matrix(np.radians(-90), [1, 0, 0])
     scene = trimesh.Scene()
-    groups = [
-        ("steel", steel, stainless()),
-        ("worktop", worktop or [], stainless_worktop()),
-        ("plastic", plastic or [], dark_plastic()),
-    ]
-    for name, meshes, material in groups:
+    materials = {
+        "steel": stainless(),
+        "worktop": stainless_worktop(),
+        "plastic": dark_plastic(),
+    }
+    for name, meshes in (("steel", steel), ("worktop", worktop or []), ("plastic", plastic or [])):
         if not meshes:
             continue
+        # one mesh per material, so the GLB has three nodes rather than one per
+        # box: Scene Viewer pays per node, and the parts share a material anyway
         mesh = trimesh.util.concatenate(meshes)
         mesh.apply_transform(rot)
         mesh.apply_scale(0.001)
-        face_normals(mesh)  # crisp facets and edge highlights, not a smoothed blob
-        apply_material(mesh, material)
         scene.add_geometry(mesh, geom_name=name)
+    # weld and repair while the topology still means something. face_normals
+    # below unmerges every vertex again for flat shading, which destroys the
+    # shared edges any of these checks would need.
+    sanitize_scene(scene)
+    for name, mesh in scene.geometry.items():
+        face_normals(mesh)  # crisp facets and edge highlights, not a smoothed blob
+        apply_material(mesh, materials[name])
     return scene
 
 
