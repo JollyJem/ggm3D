@@ -12,6 +12,9 @@ import trimesh
 Vec3 = tuple[float, float, float]
 
 CHAMFER = 2.0  # mm, the bevel cut off each edge of a visible box part
+# tub wall thickness; a basin's outer shell is its inner width plus twice this,
+# which is what a caller has to leave room for inside the worktop
+BASIN_WALL = 15.0
 
 
 def box_part(width: float, depth: float, height: float, center: Vec3) -> trimesh.Trimesh:
@@ -357,7 +360,7 @@ def basin(
     top_z: float,
     center_x: float = 0.0,
     center_y: float = 0.0,
-    wall: float = 15.0,
+    wall: float = BASIN_WALL,
 ) -> trimesh.Trimesh:
     """Open-top tub: outer shell minus inner cavity (manifold3d boolean)."""
     outer = box_part(

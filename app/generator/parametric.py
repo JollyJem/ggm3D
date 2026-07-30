@@ -25,6 +25,13 @@ BACKSPLASH_H = 100.0
 DRAINER_T = 20.0
 # Commercial Dishwasher Sink Unit PREMIUM (product 7): absolute mm layout,
 # X 0..2000 left->right, Y 0..700 front->back, then recentered to floor center.
+# The numbers below describe the real 2000 x 700 unit. A spec of any other size
+# maps through _scaled: every x is a fraction of DBL_REF_W and every y of
+# DBL_REF_D, so the proportions survive and the bounding box still matches the
+# spec. Read absolutely they overflow — a 1200 mm sink came out 1634 mm wide,
+# which is the one error AR cannot forgive.
+DBL_REF_W = 2000.0
+DBL_REF_D = 700.0
 DBL_WORKTOP_T = 45.0  # worktop slab thickness
 DBL_RIM_H = 60.0  # downturned front/side rim under the worktop
 DBL_BASIN_DEPTH = 250.0  # bowl recess below the worktop top
@@ -142,12 +149,29 @@ def _basin_layout(w: float, basins: int, drainer: str, drainer_w: float):
         zone_x0 = -w / 2 if drainer == "right" else -w / 2 + drainer_w
         bw = min(500.0, zone_w / basins - 150)
         centers = [zone_x0 + (i + 0.5) * zone_w / basins for i in range(basins)]
-        return bw, centers
+        return _fit_basins(bw, centers, w), centers
     bw = min(500.0, w / basins - 150)
     centers = [-w / 4] if basins == 1 else [
         -w / 2 + (i + 0.5) * w / basins for i in range(basins)
     ]
-    return bw, centers
+    return _fit_basins(bw, centers, w), centers
+
+
+def _fit_basins(bw: float, centers: list[float], w: float) -> float:
+    """Shrink the basins until their outer shells fit inside the worktop.
+
+    A single basin sits at -w/4, so the 500 mm default only fits from about
+    1060 mm up; below that the tub hung past the left edge and took the
+    bounding box with it (an 800 mm sink measured 865 mm).
+    """
+    room = min(w - 2 * abs(cx) for cx in centers) - 2 * parts.BASIN_WALL
+    return max(50.0, min(bw, room))
+
+
+def _scaled(bounds: tuple[float, float], size: float, reference: float) -> tuple[float, float]:
+    """Map a coordinate pair from the reference layout onto the actual size."""
+    factor = size / reference
+    return bounds[0] * factor, bounds[1] * factor
 
 
 def _dbl_worktop(
@@ -160,21 +184,22 @@ def _dbl_worktop(
     """Full worktop: slab with two basin openings cut, recessed tubs, the ribbed
     drainer, a downturned front/side rim, and the rear backsplash."""
     slab = parts.chamfer_box(parts.box_from_bounds(0, w, 0, d, top_z - DBL_WORKTOP_T, top_z))
-    y0, y1 = DBL_BASIN_Y
-    for x0, x1 in (DBL_BASIN_1, DBL_BASIN_2):
+    basins = [_scaled(b, w, DBL_REF_W) for b in (DBL_BASIN_1, DBL_BASIN_2)]
+    y0, y1 = _scaled(DBL_BASIN_Y, d, DBL_REF_D)
+    for x0, x1 in basins:
         slab = slab.difference(
             parts.box_from_bounds(x0, x1, y0, y1, top_z - DBL_WORKTOP_T * 2, top_z + 1)
         )
     worktop.append(slab)
-    for x0, x1 in (DBL_BASIN_1, DBL_BASIN_2):
+    for x0, x1 in basins:
         steel.append(
             parts.basin(
                 x1 - x0, y1 - y0, DBL_BASIN_DEPTH, top_z=top_z,
                 center_x=(x0 + x1) / 2, center_y=(y0 + y1) / 2,
             )
         )
-    dx0, dx1 = DBL_DRAINER_X
-    dy0, dy1 = DBL_DRAINER_Y
+    dx0, dx1 = _scaled(DBL_DRAINER_X, w, DBL_REF_W)
+    dy0, dy1 = _scaled(DBL_DRAINER_Y, d, DBL_REF_D)
     worktop += parts.drainer_ribs(dx0, dx1, dy0, dy1, top_z, rib_h=RIB_H)
     # downturned rim on the front and both sides (the rear carries the backsplash)
     rz0, rz1 = top_z - DBL_WORKTOP_T - DBL_RIM_H, top_z - DBL_WORKTOP_T
@@ -187,13 +212,19 @@ def _dbl_worktop(
 
 
 def _dbl_understructure(
-    top_z: float, steel: list[trimesh.Trimesh], plastic: list[trimesh.Trimesh]
+    w: float,
+    d: float,
+    top_z: float,
+    steel: list[trimesh.Trimesh],
+    plastic: list[trimesh.Trimesh],
 ) -> None:
     """Four corner legs on bullet feet, the solid front apron under the basins,
     the lower undershelf, and the front cross rail. The right bay stays open."""
     leg_top = top_z - DBL_WORKTOP_T  # legs meet the worktop underside
-    for lx in DBL_LEG_X:
-        for ly in DBL_LEG_Y:
+    leg_x = _scaled(DBL_LEG_X, w, DBL_REF_W)
+    leg_y = _scaled(DBL_LEG_Y, d, DBL_REF_D)
+    for lx in leg_x:
+        for ly in leg_y:
             steel.append(
                 parts.chamfer_box(
                     parts.box_from_bounds(
@@ -205,12 +236,12 @@ def _dbl_understructure(
             plastic.append(parts.cylinder_part(FOOT_R, FOOT_H, (lx, ly, FOOT_H / 2)))
     apron_top = top_z - DBL_RIM_H  # 810: just under the front rim
     apron_bottom = apron_top - DBL_APRON_DROP  # 560
-    ax0, ax1 = DBL_APRON_X
+    ax0, ax1 = _scaled(DBL_APRON_X, w, DBL_REF_W)
     steel.append(
         parts.chamfer_box(parts.box_from_bounds(ax0, ax1, 0, 15, apron_bottom, apron_top))
     )
-    lx0, lx1 = DBL_LEG_X
-    ly0, ly1 = DBL_LEG_Y
+    lx0, lx1 = leg_x
+    ly0, ly1 = leg_y
     steel += parts.lipped_shelf(lx0, lx1, ly0, ly1, DBL_SHELF_TOP)
     steel.append(parts.round_bar_x(lx0, lx1, ly0, apron_bottom, DBL_RAIL_R))
 
@@ -227,7 +258,7 @@ def build_double_sink(spec: BuildSpec) -> trimesh.Scene:
     plastic: list[trimesh.Trimesh] = []
     worktop: list[trimesh.Trimesh] = []
     _dbl_worktop(w, d, top_z, steel, worktop)
-    _dbl_understructure(top_z, steel, plastic)
+    _dbl_understructure(w, d, top_z, steel, plastic)
     for mesh in steel + plastic + worktop:
         mesh.apply_translation((-w / 2, -d / 2, 0.0))  # origin to floor center
     return to_scene(steel, plastic, worktop)
@@ -245,7 +276,7 @@ def build_sink(spec: BuildSpec) -> trimesh.Scene:
     top = h - rise
     drainer_w = min(700.0, w * 0.35)
     bw, centers = _basin_layout(w, basins, drainer, drainer_w)
-    bd = d - 250
+    bd = max(150.0, d - 250)  # a shallow spec must not invert the tub
     slab = parts.top_slab(w, d, top_z=top, thickness=SLAB_T)
     for cx in centers:
         hole = parts.box_part(bw, bd, SLAB_T * 3, (cx, 0, top - SLAB_T / 2))

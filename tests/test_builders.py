@@ -78,6 +78,43 @@ def test_bounding_box_matches_spec(builder, spec):
     assert abs((low[2] + high[2]) / 2) <= TOL
 
 
+# Sizes other than the two catalog SKUs. The double-sink layout is written as
+# the real 2000 x 700 unit and the single basin defaults to 500 mm wide, so
+# both only stay inside their own bounding box if the layout is fitted to the
+# spec. Read absolutely, a 1200 mm double sink measured 1634 x 640 and an
+# 800 mm single sink 865 mm — a wrong-size object placed in a real room.
+RESIZED_SINKS = [
+    BuildSpec(
+        product_type="sink", width_mm=1200, depth_mm=600, height_mm=850,
+        features={"basins": 2, "drainer": "right", "backsplash": True},
+    ),
+    BuildSpec(
+        product_type="sink", width_mm=1600, depth_mm=700, height_mm=900,
+        features={"basins": 2, "drainer": "left", "backsplash": True},
+    ),
+    BuildSpec(
+        product_type="sink", width_mm=800, depth_mm=600, height_mm=850,
+        features={"basins": 1},
+    ),
+    BuildSpec(
+        product_type="sink", width_mm=600, depth_mm=500, height_mm=850,
+        features={"basins": 1, "drainer": "right"},
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "spec", RESIZED_SINKS, ids=lambda s: f"{s.width_mm}x{s.depth_mm}_{s.features['basins']}b"
+)
+def test_sinks_hold_their_bounding_box_at_any_size(spec):
+    low, high = build_sink(spec).bounds
+    extents = high - low
+    assert abs(extents[0] - spec.width_mm * 0.001) <= TOL
+    assert abs(extents[1] - spec.height_mm * 0.001) <= TOL
+    assert abs(extents[2] - spec.depth_mm * 0.001) <= TOL
+    assert abs(low[1]) <= TOL  # still resting on the ground plane
+
+
 @pytest.mark.parametrize(("builder", "spec"), CASES, ids=IDS)
 def test_glb_exports_clean_and_under_1mb(builder, spec):
     glb = builder(spec).export(file_type="glb")
