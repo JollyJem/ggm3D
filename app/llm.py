@@ -13,6 +13,10 @@ from app.schemas import BuildSpec, Product, SpecResult
 logger = logging.getLogger(__name__)
 
 GEMINI_MODEL = "gemini-2.5-flash"
+# Milliseconds, the unit google-genai uses. Generate has a 30 s budget end to
+# end and the mesh build costs ~30 ms, so anything slower than this is a demo
+# stuck on a spinner: give up and use the deterministic fallback instead.
+GEMINI_TIMEOUT_MS = 15_000
 
 CATEGORY_DEFAULTS: dict[str, dict] = {
     "work_table": {"undershelf": True},
@@ -61,19 +65,46 @@ def _sink_features(product: Product) -> dict:
     return features
 
 
-def fallback_spec(product: Product) -> SpecResult:
-    if product.category == "sink":
-        features = _sink_features(product)
-    else:
-        features = dict(CATEGORY_DEFAULTS.get(product.category, {}))
-    spec = BuildSpec(
+def _pinned(features: dict, product: Product) -> BuildSpec:
+    """A spec with features from the caller and everything else from the catalog.
+
+    The stored dimensions are the product. A model built to numbers that
+    disagree with them stands in someone's kitchen at the wrong size, which is
+    the one failure AR makes obvious and unarguable. Gemini is asked for the
+    exact figures and normally returns them, but "normally" is not a property
+    real-scale placement can rest on, so they are pinned here either way.
+    """
+    return BuildSpec(
         product_type=product.category,
         width_mm=product.width_mm,
         depth_mm=product.depth_mm,
         height_mm=product.height_mm,
         features=features,
     )
-    return SpecResult(spec=spec, source="fallback")
+
+
+def spec_matches(spec: BuildSpec | None, product: Product) -> bool:
+    """True when a cached spec still describes this product's size and type.
+
+    Specs outlive the products they were built from: reseeding with corrected
+    dimensions leaves the old spec in models.spec_json, and reusing it rebuilds
+    the model at the size the catalog no longer claims.
+    """
+    if spec is None:
+        return False
+    return spec.product_type == product.category and (
+        spec.width_mm,
+        spec.depth_mm,
+        spec.height_mm,
+    ) == (product.width_mm, product.depth_mm, product.height_mm)
+
+
+def fallback_spec(product: Product) -> SpecResult:
+    if product.category == "sink":
+        features = _sink_features(product)
+    else:
+        features = dict(CATEGORY_DEFAULTS.get(product.category, {}))
+    return SpecResult(spec=_pinned(features, product), source="fallback")
 
 
 def get_build_spec(product: Product) -> SpecResult:
@@ -89,7 +120,10 @@ def get_build_spec(product: Product) -> SpecResult:
 def _gemini_spec(product: Product) -> SpecResult:
     from google import genai
 
-    client = genai.Client(api_key=get_settings().gemini_api_key)
+    client = genai.Client(
+        api_key=get_settings().gemini_api_key,
+        http_options={"timeout": GEMINI_TIMEOUT_MS},
+    )
     prompt = (
         "Create a build spec for a 3D model of this commercial kitchen product.\n"
         f"Name: {product.name}\n"
@@ -113,5 +147,5 @@ def _gemini_spec(product: Product) -> SpecResult:
             "temperature": 0.2,
         },
     )
-    spec = BuildSpec.model_validate_json(response.text)
-    return SpecResult(spec=spec, source="gemini")
+    reply = BuildSpec.model_validate_json(response.text)
+    return SpecResult(spec=_pinned(reply.features, product), source="gemini")
