@@ -7,7 +7,7 @@ GGM 3D Configurator. A mobile-first web app that generates and displays 3D model
 Hybrid generation:
 
 - Parametric path (live): Gemini turns product data into a build spec. trimesh builds the mesh in seconds. For boxy products: work tables, fridges, sinks.
-- AI mesh path (cached): TripoSR converts a product photo into a mesh once, offline. The GLB is stored in Supabase Storage and served instantly. For shaped products: mixer, faucet, grill.
+- AI mesh path (cached): TripoSR converts a product photo into a mesh once, offline. The GLB is stored in Supabase Storage and served instantly. For products whose shape no builder covers: machines and fittings with complex geometry.
 
 ## Hard rules
 
@@ -86,13 +86,13 @@ Storage bucket "models" with public read access. AR needs a public HTTPS GLB URL
 
 Schema workflow: Claude Code writes all SQL into supabase/schema.sql. Cem pastes it into the Supabase SQL editor by hand. Enable RLS with public read policies on both tables. Writes only go through the service key on the server.
 
-Spec cache rule: after Gemini returns a valid spec, save it into models.spec_json. On later requests reuse the cache before calling Gemini. The demo must survive a Gemini outage.
+Spec cache rule: after Gemini returns a valid spec, save it into models.spec_json. On later requests reuse the cache before calling Gemini. The demo must survive a Gemini outage. A cached spec is only reused while it still matches the product's category and dimensions — a spec outlives the row it was built from, and reseeding with corrected dimensions must not rebuild the model at the old size.
 
 ## Generation flow
 
 1. User taps Generate on a product page.
 2. POST /products/{id}/generate. router.py picks the path by category. Stainless furniture, refrigeration, and sinks go parametric. Machines with complex shapes go ai and serve the cached GLB.
-3. Parametric: call Gemini with name, category, and dimensions. Request JSON matching the BuildSpec schema through structured output (response_schema), temperature 0.2. Validate with Pydantic. Cache in spec_json.
+3. Parametric: call Gemini with name, category, and dimensions. Request JSON matching the BuildSpec schema through structured output (response_schema), temperature 0.2, with a timeout well inside the 30 s budget. Validate with Pydantic. Only `features` is taken from the reply: product_type and the three dimensions are pinned from the catalog row, because a model built to numbers the catalog does not claim stands in the room at the wrong size. Cache in spec_json.
 4. Build the mesh with part functions, export GLB, upload to Storage, set status ready.
 5. The page polls a status partial with HTMX every 2 s, then swaps in the model-viewer.
 
@@ -111,6 +111,7 @@ class BuildSpec(BaseModel):
 
 - Compose from part functions in parts.py: box_part, cylinder_part, top_slab, legs, undershelf, door_panel, handle, feet, basin.
 - Product builders in parametric.py: build_work_table, build_fridge, build_sink. Each takes a BuildSpec and returns a trimesh.Scene. Recognizable equipment, not plain boxes. A work table has a top slab, four legs, and an undershelf. A fridge has a body, a door panel, a handle, and feet.
+- A builder must hold its bounding box at every spec size, not just the catalog SKU's. The double sink is written as the real 2000 x 700 layout and mapped onto the spec through `_scaled`; basins are fitted to the width before they are cut. Absolute millimetres left in a builder overflow the moment a product is resized — a 1200 mm sink once measured 1634 mm, which AR shows as a wrong-size object in the room. tests/test_builders.py sweeps sizes other than the catalog's for exactly this.
 - Material: PBRMaterial with light gray baseColorFactor, metallicFactor 0.9, roughnessFactor 0.3 for stainless steel. Darker plastic preset for handles.
 - Check axis orientation in model-viewer during Phase 1. glTF is Y-up. If the model lies on its side, apply a fixed rotation before export.
 - Keep parametric GLB files under 1 MB.
@@ -131,6 +132,7 @@ class BuildSpec(BaseModel):
 - Run `python scripts/optimize_assets.py` after dropping in a new HDRI or product photo. Phones pay for every byte here.
 - `python scripts/inspect_glb.py <path|url>` reports the numbers Scene Viewer cares about: triangles, nodes, materials, NaN/inf coordinates, degenerate faces, bounding box. Run it on any GLB before blaming the phone.
 - No `reveal="interaction"`. The viewer partial is what HTMX swaps in when Generate finishes, and a poster waiting for a tap right then reads as a failed build.
+- Nothing outside the viewer partial may hold a reference to the `<model-viewer>` element. HTMX re-inserts that partial on every Generate, so a `document`-level listener closing over the element pins each detached viewer — and its WebGL context — for the life of the tab. Phones allow only a handful of live contexts. Register page-level listeners once (`window.__ggmParkOnHide`) and resolve the element by id when they fire.
 - Auth stays light. Catalog, viewer, and AR are public. Generate requires login with a single Supabase email and password account. Interviewers never create accounts.
 
 ## Scene Viewer
@@ -175,11 +177,11 @@ What this does and does not reach:
 
 ## Phases
 
-Phase 1, skeleton. FastAPI app, /health, catalog and detail pages, Supabase tables, seed 6 products, one hand-placed GLB in the viewer with AR turned on. Done when the model rotates in Android Chrome on the deployed URL and the AR button places it in a room.
+Phase 1, skeleton. FastAPI app, /health, catalog and detail pages, Supabase tables, seed the catalog, one hand-placed GLB in the viewer with AR turned on. Done when the model rotates in Android Chrome on the deployed URL and the AR button places it in a room.
 
 Phase 2, parametric live. Gemini spec, part functions, builders for work table, fridge, and sink. HTMX polling. Done when Generate produces a correct-size GLB in under 30 s on the deployed app.
 
-Phase 3, AI meshes. Pregenerate mixer, faucet, and grill meshes, cache them, wire to the UI. Done when all 6 products show a model and AR places the fridge at real size in a room.
+Phase 3, AI meshes. Pregenerate a mesh for every ai-path product, cache them, wire to the UI. Done when every catalog product shows a model and AR places one at real size in a room.
 
 Phase 4, optional. A worker loop that processes pending rows from models, plus an Ollama provider behind llm.py as a local fallback. Interview talking point about production readiness.
 
@@ -190,16 +192,13 @@ Phase 4, optional. A worker loop that processes pending rows from models, plus a
 - Record a 60 s screen capture as a backup.
 - Confirm ARCore runs on the demo phone during week 1.
 
-## Seed products (6)
+## Seed products
 
-- Work table with undershelf, 1200 x 700 x 850 mm, parametric
-- Refrigerated cabinet, 700 x 810 x 2050 mm, parametric
-- Sink unit with one basin, 1200 x 600 x 850 mm, parametric
-- Planetary mixer, ai mesh
-- Pre-rinse faucet, ai mesh
-- Contact grill, ai mesh
+The catalog lives in app/seed_data.py, one entry per product: id, name, category, width_mm, depth_mm, height_mm, image, description, and an optional product_url. It is the single source of truth for both the seed script and the local fallback used when Supabase is not configured. Adding or removing a product means editing that list and, in supabase mode, rerunning python scripts/seed_products.py.
 
-Dimensions and photos come from public GGM Gastro catalog pages. Internal demo use only. Download the 6 photos into app/static/img. Do not hotlink GGM URLs.
+Category decides the generation path. A category that router.py has a builder for goes parametric; anything else goes ai and needs a pregenerated mesh.
+
+Dimensions and photos come from public GGM Gastro catalog pages. Internal demo use only. Download product photos into app/static/img as {slug}.jpg; a sketch SVG at {slug}.svg stands in until then. Do not hotlink GGM URLs.
 
 ## Code style
 
