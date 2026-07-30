@@ -1,4 +1,7 @@
-"""Pregenerate AI meshes for the shaped products: mixer, faucet, grill.
+"""Pregenerate AI meshes for every catalog product on the ai path.
+
+That is any product whose category has no builder in app/generator/router.py:
+machines and fittings whose shape no parametric builder covers.
 
 One-time offline pipeline. Input photo: app/static/img/{slug}.jpg where the
 slug is the product category (mixer, faucet, grill). Raw TripoSR output goes
@@ -48,13 +51,20 @@ import numpy as np  # noqa: E402
 import trimesh  # noqa: E402
 
 from app import storage  # noqa: E402
+from app.generator import router  # noqa: E402
 from app.schemas import Product, SpecResult  # noqa: E402
 from app.seed_data import SEED_PRODUCTS  # noqa: E402
 
 RAW_DIR = ROOT / "scripts" / "ai_raw"
 MAX_BYTES = 8 * 1024 * 1024
 
-AI_PRODUCTS = [Product(**p) for p in SEED_PRODUCTS if p["category"] in ("mixer", "faucet", "grill")]
+# router.py owns the split: a category it has a builder for goes parametric,
+# everything else needs a mesh from here. Deriving it keeps this script correct
+# when the catalog changes — the retired mixer/faucet/grill were once hardcoded
+# here, and after they went the script quietly installed nothing.
+AI_PRODUCTS = [
+    Product(**p) for p in SEED_PRODUCTS if router.method_for(p["category"]) == "ai"
+]
 
 
 def normalize(raw_glb: bytes, height_mm: int, z_up: bool = False) -> bytes:
@@ -119,6 +129,12 @@ def main() -> None:
     parser.add_argument("--z-up", action="store_true",
                         help="rotate raw meshes that were exported Z-up")
     args = parser.parse_args()
+    if not AI_PRODUCTS:
+        print(
+            "No ai-path products in the catalog: every seeded category has a "
+            "builder in app/generator/router.py, so nothing needs a mesh here."
+        )
+        return
     if args.placeholders:
         install_placeholders()
     else:

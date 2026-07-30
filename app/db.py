@@ -14,8 +14,8 @@ from app.seed_data import SEED_PRODUCTS
 
 Mode = Literal["local", "supabase"]
 
-# The catalog is six rows that change when someone reruns the seed script, but
-# it is re-queried on every page view and on every 2 s poll of a running build.
+# The catalog is a handful of rows that change only when someone reruns the seed
+# script, but it is re-queried on every page view and every 2 s poll of a build.
 # Serving it from memory for a minute takes that traffic to roughly zero without
 # anyone having to notice a stale name.
 PRODUCT_TTL_SECONDS = 60.0
