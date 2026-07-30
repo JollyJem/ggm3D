@@ -81,10 +81,23 @@
        interaction prompt does, and that is off — so without this the WebGL
        loop is still drawing an HDRI-lit metal scene while Scene Viewer brings
        up the camera and its own renderer. Park the rotation before handing the
-       GPU over; there is nothing to see behind Scene Viewer anyway. */
-    document.addEventListener('visibilitychange', function () {
-      if (document.visibilityState === 'hidden') park();
-    });
+       GPU over; there is nothing to see behind Scene Viewer anyway.
+
+       Registered once per page and resolved by id when it fires. This partial
+       is what HTMX swaps in after every Generate, so a listener closing over
+       the element it was created with would pin that model-viewer on `document`
+       after HTMX detached it — and a detached model-viewer keeps its WebGL
+       context. Phones allow a handful of live contexts; spend them on repeated
+       builds and the next one is refused, which is a black viewer or a failed
+       AR handoff on the device least able to spare the memory. */
+    if (!window.__ggmParkOnHide) {
+      window.__ggmParkOnHide = true;
+      document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState !== 'hidden') return;
+        var current = document.getElementById('product-viewer');
+        if (current) current.removeAttribute('auto-rotate');
+      });
+    }
   })();
 </script>
 {% if is_sample %}
