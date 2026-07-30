@@ -74,6 +74,51 @@ def test_generate_reuses_cached_spec(monkeypatch):
     assert "<model-viewer" in status.text
 
 
+def test_resized_product_ignores_the_cached_spec(monkeypatch):
+    """A spec outlives the row it was built from. Once the catalog is corrected,
+    reusing it rebuilds the model at a size the product no longer has — and AR
+    puts exactly that size in the room."""
+    client.post(f"/products/{PARAMETRIC_ID}/generate")
+    original_w = SEED_PRODUCTS[0]["width_mm"]
+    assert storage.load_cached_spec(PARAMETRIC_ID).spec.width_mm == original_w
+
+    resized = Product(**{**SEED_PRODUCTS[0], "width_mm": original_w + 400})
+    monkeypatch.setattr(db, "get_product", lambda pid: resized)
+    client.post(f"/products/{PARAMETRIC_ID}/generate")
+    assert storage.load_cached_spec(PARAMETRIC_ID).spec.width_mm == original_w + 400
+
+
+def test_only_one_build_is_claimed_per_product():
+    assert main._claim_job(PARAMETRIC_ID) is True
+    assert main._claim_job(PARAMETRIC_ID) is False  # a second tap, still running
+    main._finish_job(PARAMETRIC_ID, {"status": "ready"})
+    assert main._claim_job(PARAMETRIC_ID) is True  # finished, a rebuild may start
+
+
+def test_second_tap_while_running_starts_no_second_build(monkeypatch):
+    main.JOBS[PARAMETRIC_ID] = {"status": "running"}
+
+    def boom(_product):
+        raise AssertionError("a build is already running, another must not start")
+
+    monkeypatch.setattr(main, "_run_generation", boom)
+    resp = client.post(f"/products/{PARAMETRIC_ID}/generate")
+    assert resp.status_code == 200
+    assert 'hx-trigger="every 2s"' in resp.text  # still shows the spinner
+
+
+def test_lost_build_stops_the_poll():
+    """JOBS is in memory. After a restart the poll finds no job and no file;
+    the honest answer ends the 2 s poll, which would otherwise keep firing for
+    as long as the tab stays open."""
+    resp = client.get(f"/products/{PARAMETRIC_ID}/model-status")
+    assert resp.status_code == 200
+    assert "Generation failed" in resp.text
+    assert "interrupted" in resp.text
+    assert "Retry" in resp.text
+    assert 'hx-trigger="every 2s"' not in resp.text
+
+
 def _install_ai_placeholder() -> None:
     from app.generator.placeholder import build_placeholder
     from app.schemas import SpecResult

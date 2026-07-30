@@ -1,6 +1,7 @@
 """FastAPI app and routes."""
 
 import logging
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -15,6 +16,8 @@ from starlette.datastructures import MutableHeaders
 from app import auth, db, llm, storage
 from app.generator import router as generator
 from app.schemas import Product
+
+logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -119,6 +122,24 @@ SAMPLE_GLB_URL = "/static/models/sample.glb"
 
 # In-memory generation status per product id (single process is fine here).
 JOBS: dict[str, dict] = {}
+# The route runs in the threadpool and the build in another thread, so claiming
+# a job has to be atomic: two taps on Generate would otherwise start two builds
+# racing to upload the same storage key.
+_JOBS_LOCK = threading.Lock()
+
+
+def _claim_job(product_id: str) -> bool:
+    """Mark a build as running. False when one already is."""
+    with _JOBS_LOCK:
+        if JOBS.get(product_id, {}).get("status") == "running":
+            return False
+        JOBS[product_id] = {"status": "running"}
+        return True
+
+
+def _finish_job(product_id: str, state: dict) -> None:
+    with _JOBS_LOCK:
+        JOBS[product_id] = state
 
 
 @app.get("/health")
@@ -216,13 +237,17 @@ def _run_generation(product: Product) -> None:
     """Spec (cached, Gemini, or fallback) -> mesh -> GLB -> storage."""
     try:
         cached = storage.load_cached_spec(product.id)
-        result = cached if cached and cached.spec else llm.get_build_spec(product)
+        # a spec cached before the product was resized still holds the old
+        # dimensions; reusing it would rebuild the model at the wrong size
+        reusable = cached is not None and llm.spec_matches(cached.spec, product)
+        result = cached if reusable else llm.get_build_spec(product)
         scene = generator.build_scene(result.spec)
         glb = scene.export(file_type="glb")
         storage.save_model(product.id, glb, result)
-        JOBS[product.id] = {"status": "ready"}
+        _finish_job(product.id, {"status": "ready"})
     except Exception as exc:  # surfaced in the status partial
-        JOBS[product.id] = {"status": "failed", "error": str(exc)}
+        logger.exception("generation failed for product %s", product.id)
+        _finish_job(product.id, {"status": "failed", "error": str(exc)})
 
 
 @app.post("/products/{product_id}/generate", response_class=HTMLResponse)
@@ -250,8 +275,8 @@ def generate(request: Request, product_id: str, background_tasks: BackgroundTask
         return templates.TemplateResponse(
             request, "partials/status.html", {"product": product, "status": "pending"}
         )
-    JOBS[product_id] = {"status": "running"}
-    background_tasks.add_task(_run_generation, product)
+    if _claim_job(product_id):
+        background_tasks.add_task(_run_generation, product)
     return templates.TemplateResponse(
         request, "partials/status.html", {"product": product, "status": "running"}
     )
@@ -279,6 +304,19 @@ def model_status(request: Request, product_id: str):
                 "glb_url": glb_url,
                 "usdz_url": storage.get_usdz_url(product_id),
                 "is_sample": False,
+            },
+        )
+    if not job:
+        # no job in this process and no file to show: the build did not survive
+        # (a restart, or this URL opened directly). Saying so stops the 2 s poll,
+        # which would otherwise run for as long as the tab stays open.
+        return templates.TemplateResponse(
+            request,
+            "partials/status.html",
+            {
+                "product": product,
+                "status": "failed",
+                "error": "The build was interrupted. Tap Retry to run it again.",
             },
         )
     return templates.TemplateResponse(
