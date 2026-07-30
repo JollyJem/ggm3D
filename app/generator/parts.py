@@ -19,6 +19,11 @@ BASIN_WALL = 15.0
 # basin is drawn from sheet, so it has no sharp vertical corner; at 600 mm
 # across, that radius is most of what separates a sink from a crate.
 BASIN_RADIUS = 65.0
+# A bowl is pressed, not folded: the walls lean in on the way down and turn
+# into the floor through a wide fillet rather than meeting it at an edge.
+# Both are visible in the manufacturer's close-up (STK_detail_2).
+BASIN_TAPER = 25.0
+BASIN_FILLET = 45.0
 
 
 def box_part(width: float, depth: float, height: float, center: Vec3) -> trimesh.Trimesh:
@@ -397,6 +402,57 @@ def rounded_box(
     return solid
 
 
+def _rounded_ring(
+    width: float, depth: float, radius: float, corner_sections: int
+) -> np.ndarray:
+    """Points anticlockwise around a rounded rectangle centred on the origin."""
+    radius = max(0.0, min(radius, width / 2, depth / 2))
+    hw, hd = width / 2 - radius, depth / 2 - radius
+    points = []
+    for cx, cy, start in (
+        (hw, hd, 0.0),
+        (-hw, hd, math.pi / 2),
+        (-hw, -hd, math.pi),
+        (hw, -hd, 1.5 * math.pi),
+    ):
+        for k in range(corner_sections + 1):
+            angle = start + (math.pi / 2) * k / corner_sections
+            points.append((cx + radius * math.cos(angle), cy + radius * math.sin(angle)))
+    return np.array(points, dtype=float)
+
+
+def _lofted_solid(rings: list[np.ndarray], heights: list[float]) -> trimesh.Trimesh:
+    """Closed mesh through equal-length rings, capped at both ends."""
+    n = len(rings[0])
+    verts = np.vstack(
+        [np.column_stack([r, np.full(len(r), z)]) for r, z in zip(rings, heights)]
+    )
+    faces = []
+    for i in range(len(rings) - 1):
+        a, b = i * n, (i + 1) * n
+        for k in range(n):
+            k2 = (k + 1) % n
+            faces.append([a + k, a + k2, b + k2])
+            faces.append([a + k, b + k2, b + k])
+    top_c, bottom_c = len(verts), len(verts) + 1
+    verts = np.vstack(
+        [
+            verts,
+            [*rings[0].mean(axis=0), heights[0]],
+            [*rings[-1].mean(axis=0), heights[-1]],
+        ]
+    )
+    last = (len(rings) - 1) * n
+    for k in range(n):
+        k2 = (k + 1) % n
+        faces.append([top_c, k2, k])
+        faces.append([bottom_c, last + k, last + k2])
+    mesh = trimesh.Trimesh(vertices=verts, faces=np.array(faces), process=False)
+    if mesh.is_watertight and mesh.volume < 0:
+        mesh.invert()
+    return mesh
+
+
 def basin(
     width: float,
     depth: float,
@@ -406,20 +462,53 @@ def basin(
     center_y: float = 0.0,
     wall: float = BASIN_WALL,
     radius: float = BASIN_RADIUS,
+    taper: float = BASIN_TAPER,
+    fillet: float = BASIN_FILLET,
+    corner_sections: int = 5,
+    arc_steps: int = 3,
 ) -> trimesh.Trimesh:
-    """Open-top tub with rounded vertical corners: outer shell minus cavity."""
-    outer = rounded_box(
-        width + 2 * wall,
-        depth + 2 * wall,
-        basin_depth + wall,
-        (center_x, center_y, top_z - (basin_depth + wall) / 2),
-        radius + wall,
+    """Pressed open-top bowl: rounded corners, walls leaning in, filleted floor.
+
+    A prism with a flat floor reads as a box someone cut a hole for. The
+    profile below walks the cavity wall down from the rim, leans it in by
+    `taper`, then turns it into the floor through a quarter-arc of `fillet`.
+    Both surfaces are lofted and the tub is the difference between them.
+    """
+    room = min(width, depth) / 2 - 10.0
+    if taper + fillet > room:  # a small bowl cannot spare the full profile
+        shrink = room / (taper + fillet)
+        taper, fillet = taper * shrink, fillet * shrink
+    fillet = min(fillet, basin_depth * 0.6)
+
+    profile = [(0.0, 0.0), (taper, -(basin_depth - fillet))]
+    for i in range(1, arc_steps + 1):
+        angle = (math.pi / 2) * i / arc_steps
+        profile.append(
+            (
+                taper + fillet * (1 - math.cos(angle)),
+                -(basin_depth - fillet) - fillet * math.sin(angle),
+            )
+        )
+
+    inner_rings = [
+        _rounded_ring(width - 2 * i, depth - 2 * i, radius, corner_sections)
+        for i, _ in profile
+    ]
+    inner_z = [top_z + dz for _, dz in profile]
+    # the cutter has to break the rim plane, or the bowl comes out closed
+    inner_rings.insert(0, inner_rings[0].copy())
+    inner_z.insert(0, top_z + wall * 2)
+
+    outer_rings = [
+        _rounded_ring(width - 2 * i + 2 * wall, depth - 2 * i + 2 * wall,
+                      radius + wall, corner_sections)
+        for i, _ in profile
+    ]
+    outer_z = [top_z + dz for _, dz in profile]
+    outer_z[-1] -= wall
+
+    tub = _lofted_solid(outer_rings, outer_z).difference(
+        _lofted_solid(inner_rings, inner_z)
     )
-    inner = rounded_box(
-        width,
-        depth,
-        basin_depth + wall,
-        (center_x, center_y, top_z - basin_depth / 2 + wall / 2),
-        radius,
-    )
-    return outer.difference(inner)
+    tub.apply_translation((center_x, center_y, 0.0))
+    return tub

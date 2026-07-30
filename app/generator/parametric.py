@@ -52,11 +52,14 @@ DBL_DRAINER_Y = (105.0, 540.0)
 DBL_RIB_PITCH = 20.0
 DBL_RIB_W = 6.0
 RIB_H = 2.5  # drainer rib height
-# chrome overflow standpipe, one per bowl, both close to the divider
+# chrome overflow standpipe, one per bowl, both close to the divider. Pulled a
+# little further in than the drawing's circles: the bowl floor is smaller than
+# the rim once the walls lean in, and on the drawing's exact centres the pipes
+# stood in the fillet instead of on the flat.
 DBL_PIPE_R = 20.0
 DBL_PIPE_H = 200.0
-DBL_PIPE_X = (572.0, 780.0)
-DBL_PIPE_Y = 495.0
+DBL_PIPE_X = (540.0, 815.0)
+DBL_PIPE_Y = 470.0
 # four corner legs frame ONLY the left basin section (X 80..1400). The 600 mm
 # right-hand overhang cantilevers over an open dishwasher bay: no legs, no
 # apron, no shelf there.
