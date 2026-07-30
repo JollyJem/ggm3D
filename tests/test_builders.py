@@ -10,6 +10,8 @@ from app.generator.parametric import (
     BASIN_DEPTH,
     CASTER_H,
     DBL_BASIN_DEPTH,
+    DBL_DRAINER_X,
+    DBL_RIB_PITCH,
     RIB_H,
     build_fridge,
     build_sink,
@@ -222,59 +224,64 @@ WORKTOP = (DOUBLE_SINK.height_mm - BACKSPLASH_H) * 0.001  # 0.870 m
 
 def test_double_sink_two_basins_on_the_left():
     scene = build_sink(DOUBLE_SINK)
-    # basin 1 (X 120..560) and basin 2 (X 640..1080), both recessed 250 mm; their
-    # centers (abs 340, 860) land in the left half of the 2000 mm width
-    for cx in (340.0 - 1000, 860.0 - 1000):
-        assert cx < 0.0
+    # basin 1 (X 90..690) and basin 2 (X 760..1360), the two 600 x 500 x 300 mm
+    # bowls the spec sheet gives. Both belong to the cabinet section, left of
+    # the right leg line at X 1400 -- 1200 mm of bowl does not fit left of the
+    # midpoint of a 2000 mm unit, and the real product does not put it there.
+    for cx in (390.0 - 1000, 1060.0 - 1000):
+        assert cx < 1400.0 - 1000
         assert _top_hit_y(scene, cx) == pytest.approx(WORKTOP - DBL_BASIN_DEPTH * 0.001, abs=TOL)
 
 
 def test_double_sink_drainer_then_flat_worktop_on_right():
     scene = build_sink(DOUBLE_SINK)
-    # ribbed drainer right of the basins: a raised rib sits above the worktop
-    assert _top_hit_y(scene, 1150.0 - 1000) == pytest.approx(WORKTOP + RIB_H * 0.001, abs=TOL)
-    # flat worktop to the right of the drainer, at the plain worktop height
-    assert _top_hit_y(scene, 1800.0 - 1000) == pytest.approx(WORKTOP, abs=TOL)
+    # the drainer sits over the 600 mm overhang: a raised rib above the worktop.
+    # derived from the layout rather than written out, so retuning the flute
+    # spacing does not silently move the probe into a gap between ribs.
+    rib_x = DBL_DRAINER_X[0] + 7 * DBL_RIB_PITCH
+    assert _top_hit_y(scene, rib_x - 1000) == pytest.approx(WORKTOP + RIB_H * 0.001, abs=TOL)
+    # flat worktop past the drainer's right end, at the plain worktop height
+    assert _top_hit_y(scene, 1975.0 - 1000) == pytest.approx(WORKTOP, abs=TOL)
     # the left section opens into a basin instead of a flat top
-    assert _top_hit_y(scene, 340.0 - 1000) < WORKTOP - 0.1
+    assert _top_hit_y(scene, 390.0 - 1000) < WORKTOP - 0.1
 
 
 def test_double_sink_open_bay_under_the_drainer():
     scene = build_sink(DOUBLE_SINK)
-    # right section (X > 1150) is open: under the cantilevered worktop there is
+    # right section (X > 1400) is open: under the cantilevered worktop there is
     # nothing but the slab, so the lowest surface sits high near the worktop.
-    # probe at X 1250 (just past the right leg line) and X 1700 to be sure the
-    # bay stays open across the whole right section.
-    assert _bottom_hit_y(scene, 1250.0 - 1000) > WORKTOP - 0.1
-    assert _bottom_hit_y(scene, 1700.0 - 1000) > WORKTOP - 0.1
+    # probe just past the right leg line and again near the right end, to be
+    # sure the dishwasher bay stays clear across the whole overhang.
+    assert _bottom_hit_y(scene, 1500.0 - 1000) > WORKTOP - 0.1
+    assert _bottom_hit_y(scene, 1900.0 - 1000) > WORKTOP - 0.1
     # left cabinet has the lower undershelf (~200 mm), far below the worktop
     assert _bottom_hit_y(scene, 600.0 - 1000) < 0.25
 
 
 def test_double_sink_four_legs_frame_left_section_only():
     scene = build_sink(DOUBLE_SINK)
-    # a leg on its foot reaches the floor at the right leg line X 1150...
+    # a leg on its foot reaches the floor at the right leg line X 1400...
     y_leg = 80.0 - 350  # front leg row
-    assert _bottom_hit_y(scene, 1150.0 - 1000, y_mm=y_leg) == pytest.approx(0.0, abs=TOL)
-    # ...and there is no leg past it: at X 1300 the only surface is the
+    assert _bottom_hit_y(scene, 1400.0 - 1000, y_mm=y_leg) == pytest.approx(0.0, abs=TOL)
+    # ...and there is no leg past it: at X 1550 the only surface is the
     # cantilevered worktop underside, high above the floor
-    assert _bottom_hit_y(scene, 1300.0 - 1000, y_mm=y_leg) > 0.7
+    assert _bottom_hit_y(scene, 1550.0 - 1000, y_mm=y_leg) > 0.7
 
 
 def test_double_sink_front_apron_under_the_basins():
     scene = build_sink(DOUBLE_SINK)
     y_front = 7.0 - 350  # just behind the front face, inside the apron panel
-    # front apron (X 60..1150) hangs to Z 560 under the basins
+    # front apron (X 60..1400) hangs to Z 560 under the basins
     assert _bottom_hit_y(scene, 300.0 - 1000, y_mm=y_front) == pytest.approx(0.560, abs=TOL)
-    # apron stops at the right leg line: X 1250 (past 1150) has no apron, only
-    # the front rim reaches down, same as the open right bay at X 1700
-    assert _bottom_hit_y(scene, 1250.0 - 1000, y_mm=y_front) > 0.7
-    assert _bottom_hit_y(scene, 1700.0 - 1000, y_mm=y_front) > 0.7
+    # apron stops at the right leg line: past X 1400 there is no apron, only
+    # the front rim reaches down, same as the open bay further right
+    assert _bottom_hit_y(scene, 1500.0 - 1000, y_mm=y_front) > 0.7
+    assert _bottom_hit_y(scene, 1900.0 - 1000, y_mm=y_front) > 0.7
 
 
 def test_double_sink_backsplash_at_rear():
     scene = build_sink(DOUBLE_SINK)
-    y_rear = 680.0 - 350  # inside the 40 mm rear backsplash (Y 660..700)
+    y_rear = 692.0 - 350  # inside the 15 mm rear upstand (Y 685..700)
     assert _top_hit_y(scene, 0.0, y_mm=y_rear) == pytest.approx(
         DOUBLE_SINK.height_mm * 0.001, abs=TOL
     )

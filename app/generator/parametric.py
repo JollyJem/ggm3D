@@ -32,27 +32,40 @@ DRAINER_T = 20.0
 # which is the one error AR cannot forgive.
 DBL_REF_W = 2000.0
 DBL_REF_D = 700.0
-DBL_WORKTOP_T = 45.0  # worktop slab thickness
+# Figures below come from the GGM product page for STK207SBL2, not from eyeing
+# the photo: 60 mm working surface, two 600 x 500 x 300 mm bowls on the left,
+# 40 x 40 legs, a 15 x 100 mm rear upstand and a 600 mm right-hand overhang.
+DBL_WORKTOP_T = 60.0  # worktop slab thickness
 DBL_RIM_H = 60.0  # downturned front/side rim under the worktop
-DBL_BASIN_DEPTH = 250.0  # bowl recess below the worktop top
-# basin openings (rims flush with the worktop), left section
-DBL_BASIN_1 = (120.0, 560.0)  # x0, x1
-DBL_BASIN_2 = (640.0, 1080.0)
-DBL_BASIN_Y = (170.0, 560.0)  # both basins, front->back
-# ribbed drainer, then a flat worktop out to the right edge
-DBL_DRAINER_X = (1150.0, 1650.0)
-DBL_DRAINER_Y = (150.0, 560.0)
-RIB_H = 4.0  # drainer rib height
-# four corner legs frame ONLY the left basin section (X 80..1150). The whole
-# right section (drainer + flat worktop) cantilevers over an open dishwasher
-# bay: no legs, no apron, no shelf there.
+DBL_BASIN_DEPTH = 300.0  # bowl recess below the worktop top
+DBL_SPLASH_T = 15.0  # rear upstand thickness
+# Basin and drainer positions read off the manufacturer's dimension drawing
+# (STK207SBL2_drawing), not estimated from a photo: 600 x 500 openings with a
+# 45 mm bridge, both bowls in the cabinet section, drainer filling the rest.
+DBL_BASIN_1 = (55.0, 655.0)  # x0, x1
+DBL_BASIN_2 = (700.0, 1300.0)
+DBL_BASIN_Y = (75.0, 575.0)  # both basins, front->back, 500 deep
+DBL_DRAINER_X = (1345.0, 1950.0)
+DBL_DRAINER_Y = (105.0, 540.0)
+# the drawing draws the drainer as ten schematic lines; the product photos show
+# roughly thirty fine front-to-back flutes, and the photos are the product
+DBL_RIB_PITCH = 20.0
+DBL_RIB_W = 6.0
+RIB_H = 2.5  # drainer rib height
+# chrome overflow standpipe, one per bowl, both close to the divider
+DBL_PIPE_R = 20.0
+DBL_PIPE_H = 200.0
+DBL_PIPE_X = (572.0, 780.0)
+DBL_PIPE_Y = 495.0
+# four corner legs frame ONLY the left basin section (X 80..1400). The 600 mm
+# right-hand overhang cantilevers over an open dishwasher bay: no legs, no
+# apron, no shelf there.
 DBL_LEG = 40.0
-DBL_LEG_X = (80.0, 1150.0)
+DBL_LEG_X = (80.0, 1400.0)
 DBL_LEG_Y = (80.0, 620.0)
-DBL_APRON_X = (60.0, 1150.0)  # solid front panel under the basins only
+DBL_APRON_X = (60.0, 1400.0)  # solid front panel under the basins only
 DBL_APRON_DROP = 250.0
 DBL_SHELF_TOP = 200.0  # lower undershelf top, ~200 mm above the floor
-DBL_RAIL_R = 15.0  # front cross rail, ~30 mm diameter
 FOOT_H = 50.0  # adjustable bullet foot under each leg
 FOOT_R = 18.0
 # work table: thin top with a downturned lip, legs on swivel casters
@@ -187,8 +200,16 @@ def _dbl_worktop(
     basins = [_scaled(b, w, DBL_REF_W) for b in (DBL_BASIN_1, DBL_BASIN_2)]
     y0, y1 = _scaled(DBL_BASIN_Y, d, DBL_REF_D)
     for x0, x1 in basins:
+        # the opening has to carry the same radius as the bowl, or the rim
+        # reads as a rounded tub dropped into a rectangular hole
         slab = slab.difference(
-            parts.box_from_bounds(x0, x1, y0, y1, top_z - DBL_WORKTOP_T * 2, top_z + 1)
+            parts.rounded_box(
+                x1 - x0,
+                y1 - y0,
+                DBL_WORKTOP_T * 3,
+                ((x0 + x1) / 2, (y0 + y1) / 2, top_z),
+                parts.BASIN_RADIUS,
+            )
         )
     worktop.append(slab)
     for x0, x1 in basins:
@@ -198,9 +219,24 @@ def _dbl_worktop(
                 center_x=(x0 + x1) / 2, center_y=(y0 + y1) / 2,
             )
         )
+    # the standpipe stands in the bowl and is the detail that reads as a
+    # commercial sink rather than a pressed tray; cheap at 12 sections
+    bowl_floor = top_z - DBL_BASIN_DEPTH
+    pipe_y = DBL_PIPE_Y * d / DBL_REF_D
+    for pipe_x in _scaled(DBL_PIPE_X, w, DBL_REF_W):
+        steel.append(
+            parts.cylinder_part(
+                DBL_PIPE_R,
+                DBL_PIPE_H,
+                (pipe_x, pipe_y, bowl_floor + DBL_PIPE_H / 2),
+                sections=12,
+            )
+        )
     dx0, dx1 = _scaled(DBL_DRAINER_X, w, DBL_REF_W)
     dy0, dy1 = _scaled(DBL_DRAINER_Y, d, DBL_REF_D)
-    worktop += parts.drainer_ribs(dx0, dx1, dy0, dy1, top_z, rib_h=RIB_H)
+    worktop += parts.drainer_ribs(
+        dx0, dx1, dy0, dy1, top_z, pitch=DBL_RIB_PITCH, rib_w=DBL_RIB_W, rib_h=RIB_H
+    )
     # downturned rim on the front and both sides (the rear carries the backsplash)
     rz0, rz1 = top_z - DBL_WORKTOP_T - DBL_RIM_H, top_z - DBL_WORKTOP_T
     steel += [
@@ -208,7 +244,9 @@ def _dbl_worktop(
         parts.box_from_bounds(0, 15, 0, d, rz0, rz1),
         parts.box_from_bounds(w - 15, w, 0, d, rz0, rz1),
     ]
-    steel.append(parts.box_from_bounds(0, w, d - 40, d, top_z, top_z + BACKSPLASH_H))
+    steel.append(
+        parts.box_from_bounds(0, w, d - DBL_SPLASH_T, d, top_z, top_z + BACKSPLASH_H)
+    )
 
 
 def _dbl_understructure(
@@ -242,8 +280,9 @@ def _dbl_understructure(
     )
     lx0, lx1 = leg_x
     ly0, ly1 = leg_y
+    # the shelf's rear fold is the only cross member the product photo shows;
+    # there is no round rail across the front, so none is built
     steel += parts.lipped_shelf(lx0, lx1, ly0, ly1, DBL_SHELF_TOP)
-    steel.append(parts.round_bar_x(lx0, lx1, ly0, apron_bottom, DBL_RAIL_R))
 
 
 def build_double_sink(spec: BuildSpec) -> trimesh.Scene:

@@ -15,6 +15,10 @@ CHAMFER = 2.0  # mm, the bevel cut off each edge of a visible box part
 # tub wall thickness; a basin's outer shell is its inner width plus twice this,
 # which is what a caller has to leave room for inside the worktop
 BASIN_WALL = 15.0
+# corner radius of a pressed bowl, scaled off the GGM dimension drawing. A
+# basin is drawn from sheet, so it has no sharp vertical corner; at 600 mm
+# across, that radius is most of what separates a sink from a crate.
+BASIN_RADIUS = 65.0
 
 
 def box_part(width: float, depth: float, height: float, center: Vec3) -> trimesh.Trimesh:
@@ -326,15 +330,22 @@ def lipped_shelf(
     lip: float = 25.0,
     sheet: float = 6.0,
     edge_t: float = 12.0,
+    upstand: float = 40.0,
 ) -> list[trimesh.Trimesh]:
-    """Flat sheet with four short downturned edges: a folded-metal lower shelf."""
+    """Folded-metal lower shelf: flat sheet, downturned front and sides, and a
+    rear edge folded up instead of down.
+
+    y0 is the front. The rear fold is what the product photo shows standing
+    proud of the shelf, and it is the one edge of this part you actually see
+    from in front of the unit.
+    """
     z0 = top_z - lip
     return [
         chamfer_box(panel)
         for panel in (
             box_from_bounds(x0, x1, y0, y1, top_z - sheet, top_z),
             box_from_bounds(x0, x1, y0, y0 + edge_t, z0, top_z),
-            box_from_bounds(x0, x1, y1 - edge_t, y1, z0, top_z),
+            box_from_bounds(x0, x1, y1 - edge_t, y1, top_z - sheet, top_z + upstand),
             box_from_bounds(x0, x0 + edge_t, y0, y1, z0, top_z),
             box_from_bounds(x1 - edge_t, x1, y0, y1, z0, top_z),
         )
@@ -353,6 +364,39 @@ def backsplash(
     return box_part(width, thickness, height, center)
 
 
+def rounded_box(
+    width: float,
+    depth: float,
+    height: float,
+    center: Vec3,
+    radius: float,
+    sections: int = 16,
+) -> trimesh.Trimesh:
+    """Box with its four vertical edges rounded off to `radius`.
+
+    Two crossed slabs plus a quarter column at each corner, unioned by
+    manifold3d, which merges the coplanar faces back down -- a rounded tub
+    costs about 270 triangles, not the thousands an extrusion would.
+    """
+    radius = min(radius, width / 2 - 1e-3, depth / 2 - 1e-3)
+    if radius <= 0:
+        return box_part(width, depth, height, center)
+    cx, cy, cz = center
+    solid = box_part(width - 2 * radius, depth, height, center).union(
+        box_part(width, depth - 2 * radius, height, center)
+    )
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            corner = cylinder_part(
+                radius,
+                height,
+                (cx + sx * (width / 2 - radius), cy + sy * (depth / 2 - radius), cz),
+                sections=sections,
+            )
+            solid = solid.union(corner)
+    return solid
+
+
 def basin(
     width: float,
     depth: float,
@@ -361,18 +405,21 @@ def basin(
     center_x: float = 0.0,
     center_y: float = 0.0,
     wall: float = BASIN_WALL,
+    radius: float = BASIN_RADIUS,
 ) -> trimesh.Trimesh:
-    """Open-top tub: outer shell minus inner cavity (manifold3d boolean)."""
-    outer = box_part(
+    """Open-top tub with rounded vertical corners: outer shell minus cavity."""
+    outer = rounded_box(
         width + 2 * wall,
         depth + 2 * wall,
         basin_depth + wall,
         (center_x, center_y, top_z - (basin_depth + wall) / 2),
+        radius + wall,
     )
-    inner = box_part(
+    inner = rounded_box(
         width,
         depth,
         basin_depth + wall,
         (center_x, center_y, top_z - basin_depth / 2 + wall / 2),
+        radius,
     )
     return outer.difference(inner)
