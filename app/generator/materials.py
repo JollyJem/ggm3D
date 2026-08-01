@@ -6,8 +6,12 @@ an environment image a fully metallic surface renders black, so the viewer must
 supply environment-image (see templates/partials/viewer.html).
 """
 
+from functools import lru_cache
+from pathlib import Path
+
 import numpy as np
 import trimesh
+from PIL import Image
 from trimesh.visual import TextureVisuals
 from trimesh.visual.material import PBRMaterial
 
@@ -56,6 +60,30 @@ def dark_plastic() -> PBRMaterial:
         metallicFactor=0.0,
         roughnessFactor=0.6,
     )
+
+
+def nameplate() -> PBRMaterial:
+    """The riveted ggmgastro plate on the front edge, as a texture.
+
+    The only textured material here, and the only reason a product exports a
+    fourth node: lettering cannot be shared with the steel it sits on, and as
+    geometry it would cost more triangles than the whole unit. A dielectric,
+    not metal — the plate is printed, so its colour is its own.
+    """
+    return PBRMaterial(
+        name="nameplate",
+        baseColorTexture=_badge_image(),
+        metallicFactor=0.0,
+        roughnessFactor=0.45,
+    )
+
+
+@lru_cache(maxsize=1)
+def _badge_image() -> Image.Image:
+    """app/generator/badge.png, written by scripts/make_badge.py."""
+    image = Image.open(Path(__file__).resolve().parent / "badge.png")
+    image.load()
+    return image
 
 
 def apply_material(mesh: trimesh.Trimesh, material: PBRMaterial) -> None:

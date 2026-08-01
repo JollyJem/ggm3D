@@ -438,6 +438,51 @@ def lipped_shelf(
     ]
 
 
+def nameplate_recess(
+    panel: trimesh.Trimesh,
+    width: float,
+    height: float,
+    center: Vec3,
+    depth: float = 0.6,
+) -> trimesh.Trimesh:
+    """Sink a shallow pocket for the nameplate into a front-facing panel.
+
+    The plate itself is a textured quad sitting on the panel's original front
+    plane, so the pocket is what keeps the two surfaces from being coplanar and
+    z-fighting. Cutting in rather than standing the plate proud also keeps the
+    product exactly as deep as the catalog says it is.
+    """
+    cx, cy, cz = center
+    pocket = box_part(width, depth * 3, height, (cx, cy + depth * 1.5, cz))
+    return panel.difference(pocket)
+
+
+def nameplate_face(
+    width: float, height: float, center: Vec3
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Vertices, faces and UVs of the plate: one quad facing the front (-Y).
+
+    Two triangles, wound so the normal points out of the panel. UV origin is
+    the quad's bottom left: trimesh keeps texture coordinates v-up and flips
+    them itself on glTF export, so writing them the glTF way here lands the
+    wordmark upside down on the phone.
+    """
+    cx, cy, cz = center
+    half_w, half_h = width / 2, height / 2
+    verts = np.array(
+        [
+            (cx - half_w, cy, cz - half_h),
+            (cx + half_w, cy, cz - half_h),
+            (cx + half_w, cy, cz + half_h),
+            (cx - half_w, cy, cz + half_h),
+        ],
+        dtype=float,
+    )
+    faces = np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int64)
+    uv = np.array([(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)], dtype=float)
+    return verts, faces, uv
+
+
 def cove_x(
     x0: float,
     x1: float,

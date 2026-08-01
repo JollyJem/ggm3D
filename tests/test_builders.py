@@ -18,6 +18,8 @@ from app.generator.parametric import (
     DBL_PIPE_H,
     DBL_PIPE_R,
     DBL_RIB_PITCH,
+    DBL_RIM_H,
+    DBL_WORKTOP_T,
     RIB_H,
     build_fridge,
     build_sink,
@@ -135,7 +137,12 @@ def test_glb_exports_clean_and_under_1mb(builder, spec):
 
 
 # (metallicFactor, roughnessFactor) per material group
-EXPECTED_MATERIALS = {"steel": (1.0, 0.40), "worktop": (1.0, 0.50), "plastic": (0.0, 0.6)}
+EXPECTED_MATERIALS = {
+    "steel": (1.0, 0.40),
+    "worktop": (1.0, 0.50),
+    "plastic": (0.0, 0.6),
+    "badge": (0.0, 0.45),  # printed nameplate, a dielectric like the plastics
+}
 
 
 @pytest.mark.parametrize(("builder", "spec"), CASES, ids=IDS)
@@ -423,11 +430,43 @@ def test_triangle_count_stays_under_the_tripwire(builder, spec):
 @pytest.mark.parametrize(("builder", "spec"), CASES, ids=IDS)
 def test_one_node_per_material_not_one_per_part(builder, spec):
     """Scene Viewer pays per node. Every part sharing a material is merged into
-    a single mesh before export, so a product is at most three nodes however
-    many boxes went into it."""
+    a single mesh before export, so a product is three nodes however many boxes
+    went into it — plus the nameplate, which is a fourth only because lettering
+    needs a texture and a texture cannot be shared with the steel around it."""
     scene = builder(spec)
-    assert len(scene.geometry) <= 3
-    assert set(scene.geometry) <= {"steel", "worktop", "plastic"}
+    assert len(scene.geometry) <= 4
+    assert set(scene.geometry) <= {"steel", "worktop", "plastic", "badge"}
+
+
+def test_nameplate_is_a_textured_quad_on_the_front_rim():
+    """Two triangles carrying the wordmark, recessed into the right-hand end of
+    the front rim where the product photo has the plate. It must not stand proud
+    of the panel: the unit is exactly as deep as the catalog says it is."""
+    scene = build_sink(DOUBLE_SINK)
+    badge = scene.geometry["badge"]
+    assert len(badge.faces) == 2
+    assert badge.visual.uv is not None and len(badge.visual.uv) == 4
+    assert badge.visual.material.baseColorTexture is not None
+    low, high = badge.bounds
+    # Y-up meters, origin at floor centre: front is +Z, right is +X
+    assert high[2] == pytest.approx(DOUBLE_SINK.depth_mm * 0.0005, abs=TOL)
+    assert high[0] < DOUBLE_SINK.width_mm * 0.0005
+    assert high[0] > DOUBLE_SINK.width_mm * 0.0005 - 0.3  # right-hand end
+    rim_top = (DOUBLE_SINK.height_mm - BACKSPLASH_H - DBL_WORKTOP_T) * 0.001
+    assert rim_top - DBL_RIM_H * 0.001 < low[1] and high[1] < rim_top
+
+
+def test_nameplate_survives_a_glb_round_trip():
+    """A UV or a texture lost on export is a grey rectangle on the phone, and
+    nothing in the build would have said so."""
+    glb = build_sink(DOUBLE_SINK).export(file_type="glb")
+    scene = trimesh.load(io.BytesIO(glb), file_type="glb", process=False)
+    plates = [
+        mesh for mesh in scene.geometry.values()
+        if getattr(mesh.visual, "uv", None) is not None and len(mesh.faces) == 2
+    ]
+    assert len(plates) == 1
+    assert plates[0].visual.material.baseColorTexture is not None
 
 
 def test_sanitize_removes_nan_slivers_and_inverted_winding():
