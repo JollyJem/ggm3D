@@ -52,14 +52,11 @@ DBL_DRAINER_Y = (105.0, 540.0)
 DBL_RIB_PITCH = 20.0
 DBL_RIB_W = 6.0
 RIB_H = 2.5  # drainer rib height
-# chrome overflow standpipe, one per bowl, both close to the divider. Pulled a
-# little further in than the drawing's circles: the bowl floor is smaller than
-# the rim once the walls lean in, and on the drawing's exact centres the pipes
-# stood in the fillet instead of on the flat.
-DBL_PIPE_R = 20.0
-DBL_PIPE_H = 200.0
-DBL_PIPE_X = (540.0, 815.0)
-DBL_PIPE_Y = 470.0
+# waste outlet, one per bowl: a low disc on the bowl floor, set back from the
+# bowl centre the way the photo shows. It stays on the flat part of the floor,
+# clear of the fillet the pressed walls turn through.
+DBL_DRAIN_R = 40.0
+DBL_DRAIN_BACK = 60.0  # behind the bowl centre
 # four corner legs frame ONLY the left basin section (X 80..1400). The 600 mm
 # right-hand overhang cantilevers over an open dishwasher bay: no legs, no
 # apron, no shelf there.
@@ -75,10 +72,14 @@ FOOT_R = 18.0
 TOP_T = 20.0
 LIP_H = 60.0
 CASTER_H = 100.0
-# leg axes sit 35 mm inside the edge; radius must stay under that so the
-# wheel disc never widens the bounding box past the spec
-WHEEL_R = 32.5
-WHEEL_W = 32.0
+SHELF_TOP = 210.0  # lower shelf, folded sheet, clear of the casters
+# Wheel diameter is close to 1.7x the leg on the real caster, and the wheel
+# hangs off the swivel axis rather than under it. The trail is aimed inward
+# (WHEEL_OFFSET is applied toward the table centre) so the widest point stays
+# |leg| - offset + radius = w/2 - 21, comfortably inside the spec footprint.
+WHEEL_R = 34.0
+WHEEL_W = 30.0
+WHEEL_OFFSET = 20.0
 
 
 def to_scene(
@@ -123,12 +124,19 @@ def build_work_table(spec: BuildSpec) -> trimesh.Scene:
     worktop = [parts.top_slab(w, d, top_z=h, thickness=TOP_T)]
     steel = parts.edge_lip(w, d, top_z=h - TOP_T, height=LIP_H)
     steel += parts.legs(w, d, height=h - TOP_T - CASTER_H, bottom_z=CASTER_H)
+    corners = parts.leg_centers(w, d)
     if spec.features.get("undershelf", True):
-        steel.append(parts.undershelf(w, d, z=CASTER_H + 100.0))
+        (x0, y0), (x1, y1) = corners[0], corners[-1]
+        steel += parts.lipped_shelf(x0, x1, y0, y1, SHELF_TOP, rear_up=False)
     plastic = []
-    for x, y in parts.leg_centers(w, d):
-        plastic.append(parts.caster_wheel(WHEEL_R, WHEEL_W, (x, y, WHEEL_R)))
-        plastic.append(parts.caster_bracket(WHEEL_R, WHEEL_W, CASTER_H, (x, y, WHEEL_R)))
+    for x, y in corners:
+        # trail aimed at the table centre, so no wheel reaches past the spec
+        offset = -WHEEL_OFFSET if x > 0 else WHEEL_OFFSET
+        caster_steel, caster_dark = parts.swivel_caster(
+            (x, y), CASTER_H, WHEEL_R, WHEEL_W, offset
+        )
+        steel += caster_steel
+        plastic += caster_dark
     return to_scene(steel, plastic, worktop)
 
 
@@ -222,19 +230,10 @@ def _dbl_worktop(
                 center_x=(x0 + x1) / 2, center_y=(y0 + y1) / 2,
             )
         )
-    # the standpipe stands in the bowl and is the detail that reads as a
-    # commercial sink rather than a pressed tray; cheap at 12 sections
     bowl_floor = top_z - DBL_BASIN_DEPTH
-    pipe_y = DBL_PIPE_Y * d / DBL_REF_D
-    for pipe_x in _scaled(DBL_PIPE_X, w, DBL_REF_W):
-        steel.append(
-            parts.cylinder_part(
-                DBL_PIPE_R,
-                DBL_PIPE_H,
-                (pipe_x, pipe_y, bowl_floor + DBL_PIPE_H / 2),
-                sections=12,
-            )
-        )
+    drain_y = (y0 + y1) / 2 + DBL_DRAIN_BACK * d / DBL_REF_D
+    for x0, x1 in basins:
+        steel.append(parts.drain_boss((x0 + x1) / 2, drain_y, bowl_floor, DBL_DRAIN_R))
     dx0, dx1 = _scaled(DBL_DRAINER_X, w, DBL_REF_W)
     dy0, dy1 = _scaled(DBL_DRAINER_Y, d, DBL_REF_D)
     worktop += parts.drainer_ribs(

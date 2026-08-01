@@ -15,14 +15,15 @@ CHAMFER = 2.0  # mm, the bevel cut off each edge of a visible box part
 # tub wall thickness; a basin's outer shell is its inner width plus twice this,
 # which is what a caller has to leave room for inside the worktop
 BASIN_WALL = 15.0
-# corner radius of a pressed bowl, scaled off the GGM dimension drawing. A
-# basin is drawn from sheet, so it has no sharp vertical corner; at 600 mm
-# across, that radius is most of what separates a sink from a crate.
-BASIN_RADIUS = 65.0
+# corner radius of a pressed bowl, measured off the product photo rather than
+# the dimension drawing: on the 600 mm bowls the corner arc runs about a sixth
+# of the width. A basin is drawn from sheet, so it has no sharp vertical corner,
+# and at 600 mm across that radius is most of what separates a sink from a crate.
+BASIN_RADIUS = 95.0
 # A bowl is pressed, not folded: the walls lean in on the way down and turn
 # into the floor through a wide fillet rather than meeting it at an edge.
 # Both are visible in the manufacturer's close-up (STK_detail_2).
-BASIN_TAPER = 25.0
+BASIN_TAPER = 30.0
 BASIN_FILLET = 45.0
 
 
@@ -223,28 +224,59 @@ def caster_wheel(radius: float, width: float, center: Vec3) -> trimesh.Trimesh:
     return wheel
 
 
-def caster_bracket(
-    wheel_radius: float, wheel_width: float, top_z: float, center: Vec3
-) -> trimesh.Trimesh:
-    """Swivel fork: mount plate under the leg plus two plates straddling the wheel.
+# Swivel caster, read off the product photo rather than sketched: a black
+# plastic collar caps the bottom of the leg, a bright steel bracket hangs under
+# it, and the wheel hangs off to one side of the swivel axis. Only the wheel and
+# the collar are dark — a caster modelled entirely in the dark preset reads as a
+# lump under the leg, which is the single biggest thing that gave the old table
+# away next to the photo.
+CASTER_PLATE = 56.0
+CASTER_COLLAR_T = 8.0  # how far the collar stands proud of the leg on each side
+CASTER_COLLAR_H = 16.0
 
-    center is the wheel's axle center; the fork sides reach just below it.
+
+def swivel_caster(
+    center: tuple[float, float],
+    top_z: float,
+    wheel_radius: float,
+    wheel_width: float,
+    offset: float,
+    leg_side: float = 40.0,
+) -> tuple[list[trimesh.Trimesh], list[trimesh.Trimesh]]:
+    """One caster under a leg whose underside sits at top_z, as (steel, dark).
+
+    `offset` shifts the wheel off the swivel axis along X — the trail every
+    swivel caster has, and what stops the wheel reading as a peg. Callers pass
+    it pointing inward so the wheel can never widen the product past the spec
+    footprint, whichever way a real caster would happen to be turned.
     """
-    cx, cy, axle_z = center
-    plate_t = 10.0
-    plate = box_part(55.0, 55.0, plate_t, (cx, cy, top_z - plate_t / 2))
-    side_t = 8.0
-    side_h = (top_z - plate_t) - (axle_z - 12.0)
-    sides = [
-        box_part(
-            wheel_radius * 1.4,
-            side_t,
-            side_h,
-            (cx, cy + s * (wheel_width / 2 + side_t / 2 + 2.0), axle_z - 12.0 + side_h / 2),
-        )
-        for s in (-1, 1)
+    cx, cy = center
+    wheel_x = cx + offset
+    plate_t = 8.0
+    plate_bottom = top_z - plate_t
+    swivel_h = 16.0
+    fork_top = plate_bottom - swivel_h
+    fork_t = 8.0
+    fork_y = cy + wheel_width / 2 + fork_t / 2 + 2.0
+    x0 = min(cx - leg_side / 2, wheel_x - wheel_radius * 0.7)
+    x1 = max(cx + leg_side / 2, wheel_x + wheel_radius * 0.7)
+    steel = [
+        box_part(CASTER_PLATE, CASTER_PLATE, plate_t, (cx, cy, plate_bottom + plate_t / 2)),
+        cylinder_part(18.0, swivel_h, (cx, cy, fork_top + swivel_h / 2)),
     ]
-    return trimesh.util.concatenate([plate, *sides])
+    steel += [
+        box_from_bounds(
+            x0, x1, y - fork_t / 2, y + fork_t / 2, wheel_radius * 0.75, fork_top
+        )
+        for y in (fork_y, 2 * cy - fork_y)
+    ]
+    collar = leg_side + 2 * CASTER_COLLAR_T
+    dark = [
+        # wraps the bottom of the leg, so it sits above the bracket, not below
+        box_part(collar, collar, CASTER_COLLAR_H, (cx, cy, top_z + CASTER_COLLAR_H / 2)),
+        caster_wheel(wheel_radius, wheel_width, (wheel_x, cy, wheel_radius)),
+    ]
+    return steel, dark
 
 
 def undershelf(
@@ -297,6 +329,18 @@ def feet(
     ]
 
 
+def drain_boss(
+    center_x: float, center_y: float, floor_z: float, radius: float = 40.0
+) -> trimesh.Trimesh:
+    """The waste outlet on a bowl floor: a low disc, not a standpipe.
+
+    The photo of this unit shows two empty bowls. A 200 mm overflow pipe was
+    modelled here once and from any angle that looked into the bowl it read as
+    a post someone left standing in the sink.
+    """
+    return cylinder_part(radius, 5.0, (center_x, center_y, floor_z + 2.5))
+
+
 def drainer_board(
     width: float,
     depth: float,
@@ -336,21 +380,27 @@ def lipped_shelf(
     sheet: float = 6.0,
     edge_t: float = 12.0,
     upstand: float = 40.0,
+    rear_up: bool = True,
 ) -> list[trimesh.Trimesh]:
-    """Folded-metal lower shelf: flat sheet, downturned front and sides, and a
-    rear edge folded up instead of down.
+    """Folded-metal lower shelf: flat sheet with its edges folded over.
 
-    y0 is the front. The rear fold is what the product photo shows standing
-    proud of the shelf, and it is the one edge of this part you actually see
-    from in front of the unit.
+    y0 is the front. With rear_up the back edge folds up instead of down, which
+    is what the sink's product photo shows standing proud of the shelf and the
+    one edge of that part you actually see from in front of the unit. The work
+    table's shelf is hemmed the same way all round, so it passes rear_up=False.
     """
     z0 = top_z - lip
+    rear = (
+        box_from_bounds(x0, x1, y1 - edge_t, y1, top_z - sheet, top_z + upstand)
+        if rear_up
+        else box_from_bounds(x0, x1, y1 - edge_t, y1, z0, top_z)
+    )
     return [
         chamfer_box(panel)
         for panel in (
             box_from_bounds(x0, x1, y0, y1, top_z - sheet, top_z),
             box_from_bounds(x0, x1, y0, y0 + edge_t, z0, top_z),
-            box_from_bounds(x0, x1, y1 - edge_t, y1, top_z - sheet, top_z + upstand),
+            rear,
             box_from_bounds(x0, x0 + edge_t, y0, y1, z0, top_z),
             box_from_bounds(x1 - edge_t, x1, y0, y1, z0, top_z),
         )
@@ -464,8 +514,8 @@ def basin(
     radius: float = BASIN_RADIUS,
     taper: float = BASIN_TAPER,
     fillet: float = BASIN_FILLET,
-    corner_sections: int = 5,
-    arc_steps: int = 3,
+    corner_sections: int = 6,
+    arc_steps: int = 4,
 ) -> trimesh.Trimesh:
     """Pressed open-top bowl: rounded corners, walls leaning in, filleted floor.
 

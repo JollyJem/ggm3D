@@ -10,12 +10,14 @@ from app.generator.parametric import (
     BASIN_DEPTH,
     CASTER_H,
     DBL_BASIN_DEPTH,
+    DBL_DRAIN_BACK,
     DBL_DRAINER_X,
     DBL_RIB_PITCH,
     RIB_H,
     build_fridge,
     build_sink,
     build_work_table,
+    to_scene,
 )
 from app.generator.sanitize import sanitize_mesh
 from app.schemas import BuildSpec
@@ -127,7 +129,7 @@ def test_glb_exports_clean_and_under_1mb(builder, spec):
 
 
 # (metallicFactor, roughnessFactor) per material group
-EXPECTED_MATERIALS = {"steel": (1.0, 0.25), "worktop": (1.0, 0.35), "plastic": (0.0, 0.6)}
+EXPECTED_MATERIALS = {"steel": (1.0, 0.40), "worktop": (1.0, 0.50), "plastic": (0.0, 0.6)}
 
 
 @pytest.mark.parametrize(("builder", "spec"), CASES, ids=IDS)
@@ -140,13 +142,38 @@ def test_material_presets_per_group(builder, spec):
         assert material.roughnessFactor == pytest.approx(roughness), name
 
 
-@pytest.mark.parametrize(("builder", "spec"), CASES, ids=IDS)
-def test_normals_are_per_face_not_averaged(builder, spec):
+def test_flat_panels_keep_a_normal_per_face():
     """Shared box vertices would average into corner normals and shade a cube
-    like a sphere; every vertex must carry its own face normal instead."""
-    for mesh in builder(spec).geometry.values():
+    like a sphere. Every edge of a box is 90 degrees, or 45 at a chamfer, so
+    nothing may be smoothed across: each vertex carries its own face normal."""
+    for part in (parts.box_part(600, 700, 40, (0, 0, 20)),
+                 parts.chamfer_box(parts.box_part(600, 700, 40, (0, 0, 20)))):
+        mesh = to_scene([part]).geometry["steel"]
         expected = np.repeat(mesh.face_normals, 3, axis=0)
         assert np.allclose(mesh.vertex_normals, expected, atol=1e-6)
+
+
+def test_curved_parts_are_shaded_smooth():
+    """A 16-section cylinder steps 22.5 degrees per facet. Left flat-shaded it
+    reads as a nut, which is what caster wheels and pressed basins came out as;
+    the wall must share normals while the cap edge stays sharp."""
+    mesh = to_scene([parts.cylinder_part(35.0, 100.0, (0, 0, 50))]).geometry["steel"]
+    normals = np.asarray(mesh.vertex_normals)
+    assert np.allclose(np.linalg.norm(normals, axis=1), 1.0, atol=1e-6)
+    upright = np.abs(normals[:, 1]) < 1e-6  # Y-up scene: the barrel, not the caps
+    face_normals_ = np.repeat(mesh.face_normals, 3, axis=0)
+    assert upright.any()
+    assert not np.allclose(normals[upright], face_normals_[upright], atol=1e-3)
+    # the caps meet the barrel at 90 degrees and keep their own normal
+    caps = np.abs(face_normals_[:, 1]) > 1 - 1e-6
+    assert np.allclose(normals[caps], face_normals_[caps], atol=1e-6)
+
+
+@pytest.mark.parametrize(("builder", "spec"), CASES, ids=IDS)
+def test_every_normal_is_a_unit_vector(builder, spec):
+    for mesh in builder(spec).geometry.values():
+        lengths = np.linalg.norm(np.asarray(mesh.vertex_normals), axis=1)
+        assert np.allclose(lengths, 1.0, atol=1e-6)
 
 
 def test_worktops_and_drainers_get_the_rougher_preset():
@@ -209,12 +236,25 @@ def _bottom_hit_y(scene: trimesh.Scene, x_mm: float, y_mm: float = 0.0) -> float
 
 def test_work_table_top_at_spec_height_casters_on_floor():
     scene = build_work_table(WORK_TABLE)
-    # casters render in the dark material group and rest on the ground plane
+    # the wheels are dark rubber and are the only thing touching the floor
     assert "plastic" in scene.geometry
     assert scene.geometry["plastic"].bounds[0][1] == pytest.approx(0.0, abs=TOL)
-    # steel starts above the casters, tabletop at the full spec height
-    assert scene.geometry["steel"].bounds[0][1] == pytest.approx(CASTER_H * 0.001, abs=TOL)
+    # the caster bracket is steel, like the bright chrome fork in the photo, so
+    # steel now reaches below the leg -- but never down to the ground plane
+    assert 0.0 < scene.geometry["steel"].bounds[0][1] < CASTER_H * 0.001
+    # tabletop at the full spec height, casters counted inside it
     assert _top_hit_y(scene, 0.0) == pytest.approx(WORK_TABLE.height_mm * 0.001, abs=TOL)
+
+
+def test_work_table_wheels_stay_inside_the_footprint():
+    """A swivel caster's wheel hangs off the swivel axis. Pointed outward it
+    would put rubber past the edge of a table the catalog calls 600 mm wide."""
+    scene = build_work_table(WORK_TABLE)
+    wheels = scene.geometry["plastic"].bounds
+    assert wheels[0][0] >= -WORK_TABLE.width_mm * 0.0005 - TOL
+    assert wheels[1][0] <= WORK_TABLE.width_mm * 0.0005 + TOL
+    assert wheels[0][2] >= -WORK_TABLE.depth_mm * 0.0005 - TOL
+    assert wheels[1][2] <= WORK_TABLE.depth_mm * 0.0005 + TOL
 
 
 # the unit is built in absolute mm (X 0..2000, Y 0..700) then recentered, so a
@@ -231,6 +271,18 @@ def test_double_sink_two_basins_on_the_left():
     for cx in (390.0 - 1000, 1060.0 - 1000):
         assert cx < 1400.0 - 1000
         assert _top_hit_y(scene, cx) == pytest.approx(WORKTOP - DBL_BASIN_DEPTH * 0.001, abs=TOL)
+
+
+def test_double_sink_bowls_hold_nothing_but_a_flat_drain():
+    """The waste outlet is a disc on the bowl floor. A 200 mm overflow standpipe
+    stood here once and from every angle that looked into the bowl -- which is
+    most of them, on a 970 mm unit -- it read as a post left in the sink."""
+    scene = build_sink(DOUBLE_SINK)
+    floor = WORKTOP - DBL_BASIN_DEPTH * 0.001
+    drain_y = 325.0 + DBL_DRAIN_BACK  # bowl centre, set back, in absolute mm
+    for bowl_x in (355.0, 1000.0):
+        top = _top_hit_y(scene, bowl_x - 1000, y_mm=drain_y - 350)
+        assert floor < top < floor + 0.01
 
 
 def test_double_sink_drainer_then_flat_worktop_on_right():

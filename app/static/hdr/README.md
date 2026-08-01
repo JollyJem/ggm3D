@@ -7,6 +7,9 @@ stored here downsampled to **256x128 (100 KB, was 1.6 MB)**.
 Poly Haven publishes all assets under **CC0**: free, no attribution required, no
 account, no API key. Credited here as a courtesy and to record provenance.
 
+**Edited**: the lower hemisphere carries a floor bounce (see below). The file is
+no longer bit-identical to the download.
+
 model-viewer uses it as `environment-image` only, never as a skybox, so it lights
 the model without appearing behind it. The parametric builders emit
 `metallicFactor: 1.0` stainless, which renders **black** with nothing to reflect
@@ -23,6 +26,29 @@ recognisable beats dramatic.
 
 If you swap this file, re-check the model through a full rotation, not just one
 frame. 1k is the smallest size Poly Haven offers for either HDRI.
+
+## The floor bounce
+
+The download's lower hemisphere averages 0.11 radiance against 1.0 above: a dark
+floor. A vertical panel sees half sky and half floor, so every apron, leg and
+door came out mid-grey — while in the GGM catalog photos, shot on a white sweep
+that bounces light back up, those same panels are close to white. That gap was
+the single largest difference left between the render and the photo.
+
+So the bottom half is lifted toward the horizon colour, ramped from nothing at
+the horizon to full at the nadir, never darkening a pixel:
+
+```python
+from scripts.optimize_assets import read_hdr, write_hdr
+rgb = read_hdr(path); h = rgb.shape[0]
+below = np.clip(((np.arange(h) + 0.5) / h - 0.5) / 0.5, 0, 1)
+target = rgb[int(h * 0.42):int(h * 0.52)].mean(axis=(0, 1)) * 0.65
+write_hdr(path, rgb + below[:, None, None] * np.maximum(0.0, target - rgb))
+```
+
+Applied once, to the 256x128 file. It only affects `model-viewer`: in AR the
+lighting comes from ARCore's estimate of the actual room, which is exactly why
+the material has to hold up on its own (see generator/materials.py).
 
 ## Why 256x128 and not the 1k download
 
