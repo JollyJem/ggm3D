@@ -55,14 +55,17 @@ DBL_DRAINER_Y = (105.0, 540.0)
 DBL_RIB_PITCH = 20.0
 DBL_RIB_W = 6.0
 RIB_H = 2.5  # drainer rib height
-# Waste outlet, one per bowl: a low disc set back from the bowl centre, with the
-# overflow standpipe standing on it. Both stay on the flat part of the floor,
-# clear of the fillet the pressed walls turn through. The pipe reaches 190 of
-# the bowl's 300 mm, so it never breaks the worktop plane at any spec height.
+# Waste outlet, one per bowl: a low disc with the overflow standpipe standing on
+# it. Not in the middle of the bowl — each sits in the rear corner nearest the
+# divider, so the left bowl's is at its rear right and the right bowl's at its
+# rear left, the pair of them close together over the bridge. The pipe reaches
+# 190 of the bowl's 300 mm, so it never breaks the worktop plane.
 DBL_DRAIN_R = 40.0
-DBL_DRAIN_BACK = 60.0  # behind the bowl centre
 DBL_PIPE_R = 19.0
 DBL_PIPE_H = 190.0
+# how far into the bowl that corner sits, as a fraction of the bowl's own size.
+# A fraction rather than millimetres because the bowls shrink with the spec.
+DBL_DRAIN_INSET = 0.22
 # four corner legs frame ONLY the left basin section (X 80..1400). The 600 mm
 # right-hand overhang cantilevers over an open dishwasher bay: no legs, no
 # apron, no shelf there.
@@ -215,6 +218,23 @@ def _scaled(bounds: tuple[float, float], size: float, reference: float) -> tuple
     return bounds[0] * factor, bounds[1] * factor
 
 
+def drain_center(
+    x0: float, x1: float, y0: float, y1: float, toward_right: bool
+) -> tuple[float, float]:
+    """Where a bowl's outlet stands: its rear corner on the divider side.
+
+    Pulled in far enough that the whole drain flange lands on the flat part of
+    the floor. A pressed bowl's floor is smaller than its rim by the taper plus
+    the fillet on every side, and a flange straddling that curve sits tilted in
+    the corner instead of flat on the bottom. The clamp also means a bowl too
+    small to have a corner simply gets its outlet back in the middle.
+    """
+    margin = parts.BASIN_TAPER + parts.BASIN_FILLET + DBL_DRAIN_R
+    inset_x = min(max((x1 - x0) * DBL_DRAIN_INSET, margin), (x1 - x0) / 2)
+    inset_y = min(max((y1 - y0) * DBL_DRAIN_INSET, margin), (y1 - y0) / 2)
+    return (x1 - inset_x if toward_right else x0 + inset_x), y1 - inset_y
+
+
 def _dbl_worktop(
     w: float,
     d: float,
@@ -248,9 +268,10 @@ def _dbl_worktop(
             )
         )
     bowl_floor = top_z - DBL_BASIN_DEPTH
-    drain_y = (y0 + y1) / 2 + DBL_DRAIN_BACK * d / DBL_REF_D
-    for x0, x1 in basins:
-        drain_x = (x0 + x1) / 2
+    # the left bowl's outlet hugs its right edge and the right bowl's its left,
+    # so the two pipes stand either side of the bridge between them
+    for (x0, x1), toward_right in zip(basins, (True, False)):
+        drain_x, drain_y = drain_center(x0, x1, y0, y1, toward_right)
         steel.append(parts.drain_boss(drain_x, drain_y, bowl_floor, DBL_DRAIN_R))
         steel.append(
             parts.standpipe(drain_x, drain_y, bowl_floor, DBL_PIPE_R, DBL_PIPE_H)

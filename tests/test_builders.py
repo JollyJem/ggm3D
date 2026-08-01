@@ -9,8 +9,11 @@ from app.generator.parametric import (
     BACKSPLASH_H,
     BASIN_DEPTH,
     CASTER_H,
+    DBL_BASIN_1,
+    DBL_BASIN_2,
     DBL_BASIN_DEPTH,
-    DBL_DRAIN_BACK,
+    DBL_BASIN_Y,
+    DBL_DRAIN_R,
     DBL_DRAINER_X,
     DBL_PIPE_H,
     DBL_PIPE_R,
@@ -19,6 +22,7 @@ from app.generator.parametric import (
     build_fridge,
     build_sink,
     build_work_table,
+    drain_center,
     to_scene,
 )
 from app.generator.sanitize import sanitize_mesh
@@ -282,13 +286,31 @@ def test_double_sink_standpipe_stands_in_each_bowl():
     and one through the wall lands on its rim."""
     scene = build_sink(DOUBLE_SINK)
     floor = WORKTOP - DBL_BASIN_DEPTH * 0.001
-    drain_y = 325.0 + DBL_DRAIN_BACK  # bowl centre, set back, in absolute mm
-    for bowl_x in (355.0, 1000.0):
-        rim = _top_hit_y(scene, bowl_x - 1000 + DBL_PIPE_R - 2, y_mm=drain_y - 350)
+    for bounds, toward_right in ((DBL_BASIN_1, True), (DBL_BASIN_2, False)):
+        x, y = drain_center(*bounds, *DBL_BASIN_Y, toward_right)
+        rim = _top_hit_y(scene, x - 1000 + DBL_PIPE_R - 2, y_mm=y - 350)
         assert rim == pytest.approx(floor + DBL_PIPE_H * 0.001, abs=TOL)
         assert rim < WORKTOP - 0.05
-        bore = _top_hit_y(scene, bowl_x - 1000, y_mm=drain_y - 350)
+        bore = _top_hit_y(scene, x - 1000, y_mm=y - 350)
         assert floor + 0.05 < bore < rim
+
+
+def test_double_sink_outlets_sit_in_the_facing_rear_corners():
+    """Not in the middle of the bowl: the left bowl's outlet is at its rear
+    right and the right bowl's at its rear left, the two pipes standing either
+    side of the bridge. Both stay clear of the fillet the bowl walls turn
+    through, or the drain flange would sit tilted in the corner."""
+    clear = parts.BASIN_TAPER + parts.BASIN_FILLET + DBL_DRAIN_R
+    left = drain_center(*DBL_BASIN_1, *DBL_BASIN_Y, True)
+    right = drain_center(*DBL_BASIN_2, *DBL_BASIN_Y, False)
+    assert left[0] > sum(DBL_BASIN_1) / 2  # right of its own bowl centre
+    assert right[0] < sum(DBL_BASIN_2) / 2  # left of its own
+    assert left[1] > sum(DBL_BASIN_Y) / 2  # both toward the back
+    assert right[1] == left[1]
+    for x, y in (left, right):
+        bowl = DBL_BASIN_1 if x < DBL_BASIN_2[0] else DBL_BASIN_2
+        assert min(x - bowl[0], bowl[1] - x) >= clear - 1e-9
+        assert min(y - DBL_BASIN_Y[0], DBL_BASIN_Y[1] - y) >= clear - 1e-9
 
 
 def test_double_sink_drainer_then_flat_worktop_on_right():
