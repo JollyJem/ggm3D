@@ -12,6 +12,8 @@ from app.generator.parametric import (
     DBL_BASIN_DEPTH,
     DBL_DRAIN_BACK,
     DBL_DRAINER_X,
+    DBL_PIPE_H,
+    DBL_PIPE_R,
     DBL_RIB_PITCH,
     RIB_H,
     build_fridge,
@@ -273,16 +275,20 @@ def test_double_sink_two_basins_on_the_left():
         assert _top_hit_y(scene, cx) == pytest.approx(WORKTOP - DBL_BASIN_DEPTH * 0.001, abs=TOL)
 
 
-def test_double_sink_bowls_hold_nothing_but_a_flat_drain():
-    """The waste outlet is a disc on the bowl floor. A 200 mm overflow standpipe
-    stood here once and from every angle that looked into the bowl -- which is
-    most of them, on a 970 mm unit -- it read as a post left in the sink."""
+def test_double_sink_standpipe_stands_in_each_bowl():
+    """The overflow pipe over each waste outlet, and the two ways it goes wrong:
+    missing, or long enough to break the worktop plane and stand out of the
+    bowl. It is open at the top, so a ray down the axis lands inside the tube
+    and one through the wall lands on its rim."""
     scene = build_sink(DOUBLE_SINK)
     floor = WORKTOP - DBL_BASIN_DEPTH * 0.001
     drain_y = 325.0 + DBL_DRAIN_BACK  # bowl centre, set back, in absolute mm
     for bowl_x in (355.0, 1000.0):
-        top = _top_hit_y(scene, bowl_x - 1000, y_mm=drain_y - 350)
-        assert floor < top < floor + 0.01
+        rim = _top_hit_y(scene, bowl_x - 1000 + DBL_PIPE_R - 2, y_mm=drain_y - 350)
+        assert rim == pytest.approx(floor + DBL_PIPE_H * 0.001, abs=TOL)
+        assert rim < WORKTOP - 0.05
+        bore = _top_hit_y(scene, bowl_x - 1000, y_mm=drain_y - 350)
+        assert floor + 0.05 < bore < rim
 
 
 def test_double_sink_drainer_then_flat_worktop_on_right():

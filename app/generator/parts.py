@@ -339,13 +339,37 @@ def feet(
 def drain_boss(
     center_x: float, center_y: float, floor_z: float, radius: float = 40.0
 ) -> trimesh.Trimesh:
-    """The waste outlet on a bowl floor: a low disc, not a standpipe.
-
-    The photo of this unit shows two empty bowls. A 200 mm overflow pipe was
-    modelled here once and from any angle that looked into the bowl it read as
-    a post someone left standing in the sink.
-    """
+    """The waste outlet on a bowl floor: a low disc the standpipe stands on."""
     return cylinder_part(radius, 5.0, (center_x, center_y, floor_z + 2.5))
+
+
+def standpipe(
+    center_x: float,
+    center_y: float,
+    floor_z: float,
+    radius: float = 19.0,
+    height: float = 190.0,
+    bore: float = 60.0,
+    sections: int = 16,
+) -> trimesh.Trimesh:
+    """Overflow standpipe: the chrome tube standing in each bowl over the waste.
+
+    Open at the top, which is the end you look at — a sink is nearly always seen
+    from above. `bore` is how far the hollow reaches down; below that the tube is
+    solid, because nothing can see in that far and a full-length bore would cost
+    wall triangles for a dark hole.
+
+    Modelled at 38 mm across, the trade size these come in. An earlier version
+    was flat-shaded at 12 sections and read as a post someone left standing in
+    the sink; at 16 sections with the smoothing rule it reads as a tube.
+    """
+    tube = cylinder_part(radius, height, (center_x, center_y, floor_z + height / 2), sections)
+    # centred on the rim plane, so half of it sticks out and the difference
+    # really opens the end rather than leaving a lid over a cavity
+    hollow = cylinder_part(
+        radius - 4.0, bore * 2, (center_x, center_y, floor_z + height), sections
+    )
+    return tube.difference(hollow)
 
 
 def drainer_board(

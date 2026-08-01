@@ -55,11 +55,14 @@ DBL_DRAINER_Y = (105.0, 540.0)
 DBL_RIB_PITCH = 20.0
 DBL_RIB_W = 6.0
 RIB_H = 2.5  # drainer rib height
-# waste outlet, one per bowl: a low disc on the bowl floor, set back from the
-# bowl centre the way the photo shows. It stays on the flat part of the floor,
-# clear of the fillet the pressed walls turn through.
+# Waste outlet, one per bowl: a low disc set back from the bowl centre, with the
+# overflow standpipe standing on it. Both stay on the flat part of the floor,
+# clear of the fillet the pressed walls turn through. The pipe reaches 190 of
+# the bowl's 300 mm, so it never breaks the worktop plane at any spec height.
 DBL_DRAIN_R = 40.0
 DBL_DRAIN_BACK = 60.0  # behind the bowl centre
+DBL_PIPE_R = 19.0
+DBL_PIPE_H = 190.0
 # four corner legs frame ONLY the left basin section (X 80..1400). The 600 mm
 # right-hand overhang cantilevers over an open dishwasher bay: no legs, no
 # apron, no shelf there.
@@ -247,7 +250,11 @@ def _dbl_worktop(
     bowl_floor = top_z - DBL_BASIN_DEPTH
     drain_y = (y0 + y1) / 2 + DBL_DRAIN_BACK * d / DBL_REF_D
     for x0, x1 in basins:
-        steel.append(parts.drain_boss((x0 + x1) / 2, drain_y, bowl_floor, DBL_DRAIN_R))
+        drain_x = (x0 + x1) / 2
+        steel.append(parts.drain_boss(drain_x, drain_y, bowl_floor, DBL_DRAIN_R))
+        steel.append(
+            parts.standpipe(drain_x, drain_y, bowl_floor, DBL_PIPE_R, DBL_PIPE_H)
+        )
     dx0, dx1 = _scaled(DBL_DRAINER_X, w, DBL_REF_W)
     dy0, dy1 = _scaled(DBL_DRAINER_Y, d, DBL_REF_D)
     worktop += parts.drainer_ribs(
