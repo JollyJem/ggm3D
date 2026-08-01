@@ -71,6 +71,11 @@ FOOT_R = 18.0
 # work table: thin top with a downturned lip, legs on swivel casters
 TOP_T = 20.0
 LIP_H = 60.0
+# Below the skirt the photo shows a second band, recessed and running between
+# the legs: the frame rail. Measured off the photo at ~50 mm, against the 60 mm
+# skirt above it. Leaving it out made the whole top assembly look shallow.
+RAIL_H = 50.0
+RAIL_INSET = 25.0  # 10 mm behind the leg faces, which sit 15 mm in
 CASTER_H = 100.0
 SHELF_TOP = 210.0  # lower shelf, folded sheet, clear of the casters
 # Wheel diameter is close to 1.7x the leg on the real caster, and the wheel
@@ -123,6 +128,11 @@ def build_work_table(spec: BuildSpec) -> trimesh.Scene:
     # h includes the casters, so the tabletop lands at the real height
     worktop = [parts.top_slab(w, d, top_z=h, thickness=TOP_T)]
     steel = parts.edge_lip(w, d, top_z=h - TOP_T, height=LIP_H)
+    # the frame rail under the skirt, set back far enough that the legs stand
+    # proud of it exactly as they do in the product photo
+    steel += parts.edge_lip(
+        w, d, top_z=h - TOP_T - LIP_H, height=RAIL_H, inset=RAIL_INSET
+    )
     steel += parts.legs(w, d, height=h - TOP_T - CASTER_H, bottom_z=CASTER_H)
     corners = parts.leg_centers(w, d)
     if spec.features.get("undershelf", True):

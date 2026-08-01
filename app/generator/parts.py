@@ -177,8 +177,15 @@ def edge_lip(
     top_z: float,
     height: float = 60.0,
     thickness: float = 15.0,
+    inset: float = 0.0,
 ) -> list[trimesh.Trimesh]:
-    """Downturned rim under the top slab: four thin plates flush with the edges."""
+    """Downturned rim under the top slab: four thin plates around the edges.
+
+    `inset` pulls the four plates in from the outer faces. At 0 the rim is
+    flush, which is the skirt hanging off the top plate. Set back past the legs
+    it is the frame rail below that skirt, the one the legs stand proud of.
+    """
+    width, depth = width - 2 * inset, depth - 2 * inset
     z = top_z - height / 2
     return [
         box_part(width, thickness, height, (0, s * (depth - thickness) / 2, z))
