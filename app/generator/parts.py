@@ -414,6 +414,61 @@ def lipped_shelf(
     ]
 
 
+def cove_x(
+    x0: float,
+    x1: float,
+    corner_y: float,
+    corner_z: float,
+    radius: float = 25.0,
+    segments: int = 4,
+    bite: float = 1.0,
+) -> trimesh.Trimesh:
+    """Concave fillet running along X where a horizontal sheet turns up a wall.
+
+    The worktop and its rear upstand are one folded sheet, so they meet through
+    a radius, not an edge — in the product photo that curve is a soft highlight
+    running the whole length of the unit, and the hard corner it replaces is
+    the giveaway that a render was assembled from boxes.
+
+    corner_y/corner_z is the inside corner: the wall stands at corner_y and the
+    sheet lies at corner_z. `bite` buries the flat faces a hair inside both, so
+    the coplanar surfaces never z-fight.
+    """
+    profile = [(corner_y + bite, corner_z - bite), (corner_y + bite, corner_z + radius)]
+    for i in range(segments + 1):  # concave arc, wall back down to sheet
+        angle = (math.pi / 2) * i / segments
+        profile.append(
+            (corner_y - radius + radius * math.sin(angle),
+             corner_z + radius - radius * math.cos(angle))
+        )
+    profile.append((corner_y - radius, corner_z - bite))
+    return _prism_x(profile, x0, x1)
+
+
+def _prism_x(profile: list[tuple[float, float]], x0: float, x1: float) -> trimesh.Trimesh:
+    """Close a (y, z) polygon into a solid running from x0 to x1.
+
+    The polygon is fanned from its first point, so it must be convex enough for
+    that fan to stay inside it — true of every cross-section built here.
+    """
+    n = len(profile)
+    verts = np.array(
+        [(x0, y, z) for y, z in profile] + [(x1, y, z) for y, z in profile], dtype=float
+    )
+    faces = []
+    for i in range(1, n - 1):
+        faces.append([0, i + 1, i])
+        faces.append([n, n + i, n + i + 1])
+    for i in range(n):
+        j = (i + 1) % n
+        faces.append([i, j, n + j])
+        faces.append([i, n + j, n + i])
+    mesh = trimesh.Trimesh(vertices=verts, faces=np.array(faces), process=False)
+    if mesh.is_watertight and mesh.volume < 0:
+        mesh.invert()
+    return mesh
+
+
 def backsplash(
     width: float,
     height: float,

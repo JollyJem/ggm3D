@@ -39,6 +39,9 @@ DBL_WORKTOP_T = 60.0  # worktop slab thickness
 DBL_RIM_H = 60.0  # downturned front/side rim under the worktop
 DBL_BASIN_DEPTH = 300.0  # bowl recess below the worktop top
 DBL_SPLASH_T = 15.0  # rear upstand thickness
+# radius of the fold where the worktop turns up into that upstand. Kept under
+# the rear rim (125 mm behind the bowls) so it never eats into a basin opening.
+DBL_COVE_R = 25.0
 # Basin and drainer positions read off the manufacturer's dimension drawing
 # (STK207SBL2_drawing), not estimated from a photo: 600 x 500 openings with a
 # 45 mm bridge, both bowls in the cabinet section, drainer filling the rest.
@@ -114,11 +117,12 @@ def to_scene(
         mesh.apply_scale(0.001)
         scene.add_geometry(mesh, geom_name=name)
     # weld and repair while the topology still means something. face_normals
-    # below unmerges every vertex again for flat shading, which destroys the
-    # shared edges any of these checks would need.
+    # below splits every vertex per face corner again, which destroys the shared
+    # edges any of these checks would need — and which it needs itself first, to
+    # know which faces meet at an edge shallow enough to shade smooth across.
     sanitize_scene(scene)
     for name, mesh in scene.geometry.items():
-        face_normals(mesh)  # crisp facets and edge highlights, not a smoothed blob
+        face_normals(mesh)  # sharp where the sheet folds, smooth where it curves
         apply_material(mesh, materials[name])
     return scene
 
@@ -258,6 +262,10 @@ def _dbl_worktop(
     ]
     steel.append(
         parts.box_from_bounds(0, w, d - DBL_SPLASH_T, d, top_z, top_z + BACKSPLASH_H)
+    )
+    # worktop and upstand are one folded sheet: they meet through a radius
+    worktop.append(
+        parts.cove_x(0, w, d - DBL_SPLASH_T, top_z, radius=DBL_COVE_R)
     )
 
 
